@@ -270,10 +270,22 @@ io.on("connection", (socket) => {
     console.log(`👤 Client ${socket.id} joined room: ${room}`);
   });
 
+  socket.on("join_product", (productId) => {
+    const room = `product_${productId}`;
+    socket.join(room);
+    console.log(`👤 Client ${socket.id} joined room (join_product): ${room}`);
+  });
+
   socket.on("leave_room", (productId) => {
     const room = `product_${productId}`;
     socket.leave(room);
     console.log(`👤 Client ${socket.id} left room: ${room}`);
+  });
+
+  socket.on("leave_product", (productId) => {
+    const room = `product_${productId}`;
+    socket.leave(room);
+    console.log(`👤 Client ${socket.id} left room (leave_product): ${room}`);
   });
 
   socket.on("disconnect", () => {
