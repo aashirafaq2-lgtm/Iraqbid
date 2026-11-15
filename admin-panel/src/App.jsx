@@ -70,6 +70,12 @@ export default function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // --- BANNERS & SLIDESHOW MANAGEMENT STATE ---
+  const [bannersList, setBannersList] = useState([]);
+  const [bannersLoading, setBannersLoading] = useState(false);
+  const [newBanner, setNewBanner] = useState({ title: '', link: '', displayOrder: '1', isActive: true });
+  const [bannerImageFile, setBannerImageFile] = useState(null);
+
   // --- 1. EXECUTIVE DASHBOARD KPI STATE ---
   const [kpiData, setKpiData] = useState(null);
   const [kpiLoading, setKpiLoading] = useState(false);
@@ -372,6 +378,57 @@ export default function App() {
     }
   };
 
+  const fetchBanners = async () => {
+    setBannersLoading(true);
+    try {
+      const res = await axios.get('/api/banners');
+      if (res.data.success) {
+        setBannersList(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Banners fetch error:', err);
+    } finally {
+      setBannersLoading(false);
+    }
+  };
+
+  const handleCreateBanner = async (e) => {
+    e.preventDefault();
+    if (!bannerImageFile) return alert('Please choose an image file for the banner slideshow.');
+    const formData = new FormData();
+    formData.append('image', bannerImageFile);
+    formData.append('title', newBanner.title || 'Featured Slide');
+    formData.append('link', newBanner.link || '');
+    formData.append('displayOrder', newBanner.displayOrder || '1');
+    formData.append('isActive', newBanner.isActive ? 'true' : 'false');
+
+    try {
+      const res = await axios.post('/api/banners', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.success) {
+        alert('Slideshow Banner successfully uploaded & published to mobile app!');
+        setNewBanner({ title: '', link: '', displayOrder: '1', isActive: true });
+        setBannerImageFile(null);
+        fetchBanners();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleDeleteBanner = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this slideshow banner from the mobile app?')) return;
+    try {
+      const res = await axios.delete(`/api/banners/${id}`);
+      if (res.data.success) {
+        fetchBanners();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
   // Initial Fetching
   useEffect(() => {
     if (authToken) {
@@ -389,6 +446,7 @@ export default function App() {
       fetchPendingProducts();
       fetchReferrals();
       fetchLogs();
+      fetchBanners();
     }
   }, [authToken]);
 
@@ -1066,7 +1124,8 @@ export default function App() {
             ...(canAccessStaff ? [{ id: 'staff', label: '10. Employees & Permissions', icon: <Key size={18} /> }] : []),
             ...(canAccessCRM ? [{ id: 'reports', label: '11. Reports Hub', icon: <FileSpreadsheet size={18} /> }] : []),
             ...(canAccessCRM ? [{ id: 'logs', label: '12. Activity Log', icon: <History size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'settings', label: '13. System Settings', icon: <Settings size={18} /> }] : [])
+            ...(canAccessCRM ? [{ id: 'banners', label: '13. Mobile Slideshow & Banners', icon: <ImageIcon size={18} /> }] : []),
+            ...(canAccessCRM ? [{ id: 'settings', label: '14. System Settings', icon: <Settings size={18} /> }] : [])
           ].map(item => (
             <button
               key={item.id}
@@ -2148,7 +2207,153 @@ export default function App() {
         )}
 
         {/* =====================================================================
-            MODULE 13: SYSTEM SETTINGS (1 USD = 1,520 IQD & AUTO-BIDDER BOT)
+            MODULE 13: MOBILE SLIDESHOW & BANNERS MANAGEMENT
+           ===================================================================== */}
+        {activeTab === 'banners' && canAccessCRM && (
+          <div style={{ padding: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '800' }}>Mobile App Slideshow & Banner Management</h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>
+                  Upload, reorder, or replace home screen 3D carousel banners. Changes appear instantly in the mobile application.
+                </p>
+              </div>
+              <button
+                onClick={fetchBanners}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: '#38bdf8', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+              >
+                <RefreshCw size={16} className={bannersLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            {/* Create Banner Form */}
+            <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '28px', marginTop: '20px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Plus size={18} color="#38bdf8" /> Add New Slideshow Banner
+              </h3>
+              <form onSubmit={handleCreateBanner} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Banner Title / Campaign Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Special Deals 50% Off"
+                    value={newBanner.title}
+                    onChange={e => setNewBanner({ ...newBanner, title: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Target Link or Category (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="/category/Electronics"
+                    value={newBanner.link}
+                    onChange={e => setNewBanner({ ...newBanner, link: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Display Order (1 = First)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newBanner.displayOrder}
+                    onChange={e => setNewBanner({ ...newBanner, displayOrder: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Banner Graphic Image *</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={e => setBannerImageFile(e.target.files?.[0] || null)}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '8px 12px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    style={{ width: '100%', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '11px', borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <Upload size={16} /> Upload & Publish
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Active Slideshow Banners List */}
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontWeight: '700', fontSize: '14px', color: '#e2e8f0' }}>
+                Active App Banners ({bannersList.length})
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#94a3b8' }}>
+                      <th style={{ padding: '12px 18px' }}>Slide #</th>
+                      <th style={{ padding: '12px 18px' }}>Preview</th>
+                      <th style={{ padding: '12px 18px' }}>Title & Description</th>
+                      <th style={{ padding: '12px 18px' }}>Target Link</th>
+                      <th style={{ padding: '12px 18px' }}>Status</th>
+                      <th style={{ padding: '12px 18px', textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bannersList.map((banner, idx) => (
+                      <tr key={banner.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '14px 18px', fontWeight: '700', color: '#38bdf8' }}>{banner.displayOrder || idx + 1}</td>
+                        <td style={{ padding: '14px 18px' }}>
+                          <img
+                            src={banner.imageUrl || banner.image_url}
+                            alt="Banner Preview"
+                            style={{ width: '120px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}
+                          />
+                        </td>
+                        <td style={{ padding: '14px 18px', fontWeight: '600', color: '#f8fafc' }}>
+                          {banner.title}
+                        </td>
+                        <td style={{ padding: '14px 18px', color: '#94a3b8', fontSize: '12px' }}>
+                          {banner.link || 'Home Highlight'}
+                        </td>
+                        <td style={{ padding: '14px 18px' }}>
+                          <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>
+                            Live on App
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleDeleteBanner(banner.id)}
+                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Trash2 size={14} /> Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {bannersList.length === 0 && (
+                      <tr>
+                        <td colSpan="6" style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                          No custom banners uploaded yet. The mobile app is currently displaying the 5 default high-converting 3D luxury slides.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =====================================================================
+            MODULE 14: SYSTEM SETTINGS (1 USD = 1,520 IQD & AUTO-BIDDER BOT)
            ===================================================================== */}
         {activeTab === 'settings' && canAccessCRM && (
           <div style={{ padding: '32px' }}>
