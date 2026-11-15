@@ -1,0 +1,219 @@
+[2025-11-06T00:44:53.509Z] 
+============================================================
+[2025-11-06T00:44:53.510Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T00:44:53.511Z] ============================================================
+[2025-11-06T00:44:55.174Z] ✅ Database Connected — Time: Thu Nov 06 2025 05:44:55 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T00:44:55.717Z] ❌ Backend API FAILED — Request failed with status code 404
+[2025-11-06T00:44:56.004Z] ❌ Flutter Integration FAILED — Request failed with status code 404
+[2025-11-06T00:44:56.290Z] ❌ Admin Frontend FAILED — Request failed with status code 404
+[2025-11-06T00:44:56.291Z] ------------------------------------------------------------
+[2025-11-06T00:44:56.303Z] 📊 FINAL SUMMARY:
+[2025-11-06T00:44:56.304Z]    Database: ✅ OK
+[2025-11-06T00:44:56.305Z]    Backend: ❌ FAIL
+[2025-11-06T00:44:56.305Z]    Flutter: ❌ FAIL
+[2025-11-06T00:44:56.305Z]    Admin: ❌ FAIL
+[2025-11-06T00:44:56.306Z] ❌ SYSTEM HEALTH: ISSUES DETECTED
+[2025-11-06T00:44:56.307Z] ============================================================
+
+[2025-11-06T01:00:37.886Z] 
+============================================================
+[2025-11-06T01:00:37.887Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T01:00:37.887Z] ============================================================
+[2025-11-06T01:00:39.557Z] ✅ Database Connected — Time: Thu Nov 06 2025 06:00:40 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T01:00:39.582Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 24ms
+[2025-11-06T01:00:41.502Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (3 products)
+[2025-11-06T01:00:41.506Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-06T01:00:41.507Z]    Note: Requires authentication (401 expected)
+[2025-11-06T01:00:41.507Z] ------------------------------------------------------------
+[2025-11-06T01:00:41.508Z] 📊 FINAL SUMMARY:
+[2025-11-06T01:00:41.508Z]    Database: ✅ OK
+[2025-11-06T01:00:41.508Z]    Backend: ✅ OK
+[2025-11-06T01:00:41.509Z]    Flutter: ✅ OK
+[2025-11-06T01:00:41.509Z]    Admin: ✅ OK
+[2025-11-06T01:00:41.510Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-06T01:00:41.510Z] ============================================================
+
+[2025-11-06T19:06:02.331Z] 
+============================================================
+[2025-11-06T19:06:02.333Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T19:06:02.334Z] ============================================================
+[2025-11-06T19:06:04.081Z] ✅ Database Connected — Time: Fri Nov 07 2025 00:06:05 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T19:06:04.123Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 40ms
+[2025-11-06T19:06:06.040Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (3 products)
+[2025-11-06T19:06:06.044Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-06T19:06:06.045Z]    Note: Requires authentication (401 expected)
+[2025-11-06T19:06:06.045Z] ------------------------------------------------------------
+[2025-11-06T19:06:06.045Z] 📊 FINAL SUMMARY:
+[2025-11-06T19:06:06.046Z]    Database: ✅ OK
+[2025-11-06T19:06:06.046Z]    Backend: ✅ OK
+[2025-11-06T19:06:06.046Z]    Flutter: ✅ OK
+[2025-11-06T19:06:06.047Z]    Admin: ✅ OK
+[2025-11-06T19:06:06.047Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-06T19:06:06.048Z] ============================================================
+
+[2025-11-06T23:56:44.785Z] 
+============================================================
+[2025-11-06T23:56:44.787Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T23:56:44.787Z] ============================================================
+[2025-11-06T23:56:46.994Z] ✅ Database Connected — Time: Fri Nov 07 2025 04:56:46 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T23:56:47.914Z] ❌ Backend API FAILED — Tried 4 URLs, none responded
+[2025-11-06T23:56:47.915Z]    Note: Backend may not be running. Start with: npm run dev
+[2025-11-06T23:56:48.224Z] ❌ Flutter Integration FAILED — API endpoint not reachable
+[2025-11-06T23:56:48.225Z]    Checked: http://localhost:5000/api/products, https://bidmaster-api.onrender.com/api/products
+[2025-11-06T23:56:49.040Z] ❌ Admin Frontend FAILED — Admin endpoints not reachable
+[2025-11-06T23:56:49.042Z]    Checked: http://localhost:5000/api/admin/dashboard, https://bidmaster-api.onrender.com/api/admin/dashboard
+[2025-11-06T23:56:49.043Z] ------------------------------------------------------------
+[2025-11-06T23:56:49.044Z] 📊 FINAL SUMMARY:
+[2025-11-06T23:56:49.045Z]    Database: ✅ OK
+[2025-11-06T23:56:49.046Z]    Backend: ❌ FAIL
+[2025-11-06T23:56:49.048Z]    Flutter: ❌ FAIL
+[2025-11-06T23:56:49.049Z]    Admin: ❌ FAIL
+[2025-11-06T23:56:49.050Z] ❌ SYSTEM HEALTH: ISSUES DETECTED
+[2025-11-06T23:56:49.051Z] ============================================================
+
+[2025-11-06T23:57:46.471Z] 
+============================================================
+[2025-11-06T23:57:46.474Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T23:57:46.476Z] ============================================================
+[2025-11-06T23:57:49.256Z] ✅ Database Connected — Time: Fri Nov 07 2025 04:57:48 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T23:57:49.971Z] ❌ Backend API FAILED — Tried 4 URLs, none responded
+[2025-11-06T23:57:49.973Z]    Note: Backend may not be running. Start with: npm run dev
+[2025-11-06T23:57:50.378Z] ❌ Flutter Integration FAILED — API endpoint not reachable
+[2025-11-06T23:57:50.379Z]    Checked: http://localhost:5000/api/products, https://bidmaster-api.onrender.com/api/products
+[2025-11-06T23:57:50.789Z] ❌ Admin Frontend FAILED — Admin endpoints not reachable
+[2025-11-06T23:57:50.791Z]    Checked: http://localhost:5000/api/admin/dashboard, https://bidmaster-api.onrender.com/api/admin/dashboard
+[2025-11-06T23:57:50.791Z] ------------------------------------------------------------
+[2025-11-06T23:57:50.792Z] 📊 FINAL SUMMARY:
+[2025-11-06T23:57:50.792Z]    Database: ✅ OK
+[2025-11-06T23:57:50.793Z]    Backend: ❌ FAIL
+[2025-11-06T23:57:50.794Z]    Flutter: ❌ FAIL
+[2025-11-06T23:57:50.795Z]    Admin: ❌ FAIL
+[2025-11-06T23:57:50.795Z] ❌ SYSTEM HEALTH: ISSUES DETECTED
+[2025-11-06T23:57:50.796Z] ============================================================
+
+[2025-11-06T23:58:10.206Z] 
+============================================================
+[2025-11-06T23:58:10.209Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T23:58:10.211Z] ============================================================
+[2025-11-06T23:58:12.807Z] ✅ Database Connected — Time: Fri Nov 07 2025 04:58:12 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T23:58:12.906Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 97ms
+[2025-11-06T23:58:13.844Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (3 products)
+[2025-11-06T23:58:13.856Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-06T23:58:13.857Z]    Note: Requires authentication (401 expected)
+[2025-11-06T23:58:13.859Z] ------------------------------------------------------------
+[2025-11-06T23:58:13.859Z] 📊 FINAL SUMMARY:
+[2025-11-06T23:58:13.860Z]    Database: ✅ OK
+[2025-11-06T23:58:13.861Z]    Backend: ✅ OK
+[2025-11-06T23:58:13.862Z]    Flutter: ✅ OK
+[2025-11-06T23:58:13.863Z]    Admin: ✅ OK
+[2025-11-06T23:58:13.865Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-06T23:58:13.866Z] ============================================================
+
+[2025-11-06T23:58:30.507Z] 
+============================================================
+[2025-11-06T23:58:30.509Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T23:58:30.510Z] ============================================================
+[2025-11-06T23:58:32.875Z] ✅ Database Connected — Time: Fri Nov 07 2025 04:58:32 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T23:58:32.933Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 56ms
+[2025-11-06T23:58:35.242Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (3 products)
+[2025-11-06T23:58:35.250Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-06T23:58:35.251Z]    Note: Requires authentication (401 expected)
+[2025-11-06T23:58:35.253Z] ------------------------------------------------------------
+[2025-11-06T23:58:35.254Z] 📊 FINAL SUMMARY:
+[2025-11-06T23:58:35.255Z]    Database: ✅ OK
+[2025-11-06T23:58:35.256Z]    Backend: ✅ OK
+[2025-11-06T23:58:35.257Z]    Flutter: ✅ OK
+[2025-11-06T23:58:35.258Z]    Admin: ✅ OK
+[2025-11-06T23:58:35.259Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-06T23:58:35.260Z] ============================================================
+
+[2025-11-06T23:58:37.416Z] 
+============================================================
+[2025-11-06T23:58:37.419Z] 🩺 BidMaster System Health Check Started
+[2025-11-06T23:58:37.420Z] ============================================================
+[2025-11-06T23:58:39.642Z] ✅ Database Connected — Time: Fri Nov 07 2025 04:58:39 GMT+0500 (Pakistan Standard Time)
+[2025-11-06T23:58:39.690Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 46ms
+[2025-11-06T23:58:40.463Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (3 products)
+[2025-11-06T23:58:40.471Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-06T23:58:40.472Z]    Note: Requires authentication (401 expected)
+[2025-11-06T23:58:40.473Z] ------------------------------------------------------------
+[2025-11-06T23:58:40.475Z] 📊 FINAL SUMMARY:
+[2025-11-06T23:58:40.476Z]    Database: ✅ OK
+[2025-11-06T23:58:40.477Z]    Backend: ✅ OK
+[2025-11-06T23:58:40.478Z]    Flutter: ✅ OK
+[2025-11-06T23:58:40.480Z]    Admin: ✅ OK
+[2025-11-06T23:58:40.481Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-06T23:58:40.484Z] ============================================================
+
+[2025-11-07T21:39:58.842Z] 
+============================================================
+[2025-11-07T21:39:58.843Z] 🩺 BidMaster System Health Check Started
+[2025-11-07T21:39:58.844Z] ============================================================
+[2025-11-07T21:40:01.004Z] ✅ Database Connected — Time: Sat Nov 08 2025 02:40:00 GMT+0500 (Pakistan Standard Time)
+[2025-11-07T21:40:01.025Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 20ms
+[2025-11-07T21:40:03.036Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (4 products)
+[2025-11-07T21:40:03.040Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-07T21:40:03.041Z]    Note: Requires authentication (401 expected)
+[2025-11-07T21:40:03.042Z] ------------------------------------------------------------
+[2025-11-07T21:40:03.042Z] 📊 FINAL SUMMARY:
+[2025-11-07T21:40:03.042Z]    Database: ✅ OK
+[2025-11-07T21:40:03.043Z]    Backend: ✅ OK
+[2025-11-07T21:40:03.043Z]    Flutter: ✅ OK
+[2025-11-07T21:40:03.044Z]    Admin: ✅ OK
+[2025-11-07T21:40:03.045Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-07T21:40:03.045Z] ============================================================
+
+[2025-11-07T23:11:02.295Z] 
+============================================================
+[2025-11-07T23:11:02.297Z] 🩺 BidMaster System Health Check Started
+[2025-11-07T23:11:02.297Z] ============================================================
+[2025-11-07T23:11:04.054Z] ✅ Database Connected — Time: Sat Nov 08 2025 04:11:03 GMT+0500 (Pakistan Standard Time)
+[2025-11-07T23:11:04.075Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 19ms
+[2025-11-07T23:11:06.060Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (4 products)
+[2025-11-07T23:11:06.064Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-07T23:11:06.065Z]    Note: Requires authentication (401 expected)
+[2025-11-07T23:11:06.065Z] ------------------------------------------------------------
+[2025-11-07T23:11:06.066Z] 📊 FINAL SUMMARY:
+[2025-11-07T23:11:06.066Z]    Database: ✅ OK
+[2025-11-07T23:11:06.067Z]    Backend: ✅ OK
+[2025-11-07T23:11:06.067Z]    Flutter: ✅ OK
+[2025-11-07T23:11:06.067Z]    Admin: ✅ OK
+[2025-11-07T23:11:06.068Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-07T23:11:06.068Z] ============================================================
+
+[2025-11-08T00:55:26.917Z] 
+============================================================
+[2025-11-08T00:55:26.920Z] 🩺 BidMaster System Health Check Started
+[2025-11-08T00:55:26.921Z] ============================================================
+[2025-11-08T00:55:29.489Z] ✅ Database Connected — Time: Sat Nov 08 2025 05:55:28 GMT+0500 (Pakistan Standard Time)
+[2025-11-08T00:55:29.531Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 40ms
+[2025-11-08T00:55:32.054Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (4 products)
+[2025-11-08T00:55:32.061Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-08T00:55:32.062Z]    Note: Requires authentication (401 expected)
+[2025-11-08T00:55:32.064Z] ------------------------------------------------------------
+[2025-11-08T00:55:32.065Z] 📊 FINAL SUMMARY:
+[2025-11-08T00:55:32.066Z]    Database: ✅ OK
+[2025-11-08T00:55:32.067Z]    Backend: ✅ OK
+[2025-11-08T00:55:32.067Z]    Flutter: ✅ OK
+[2025-11-08T00:55:32.068Z]    Admin: ✅ OK
+[2025-11-08T00:55:32.069Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-08T00:55:32.070Z] ============================================================
+
+[2025-11-13T19:08:13.067Z] 
+============================================================
+[2025-11-13T19:08:13.069Z] 🩺 BidMaster System Health Check Started
+[2025-11-13T19:08:13.070Z] ============================================================
+[2025-11-13T19:08:14.954Z] ✅ Database Connected — Time: Fri Nov 14 2025 00:08:14 GMT+0500 (Pakistan Standard Time)
+[2025-11-13T19:08:14.974Z] ✅ Backend Health Check OK — Local — http://localhost:5000/ — 18ms
+[2025-11-13T19:08:17.425Z] ✅ Flutter Integration OK — http://localhost:5000/api/products — Data structure valid (20 products)
+[2025-11-13T19:08:17.428Z] ✅ Admin Frontend API Endpoint Live — http://localhost:5000/api/admin/dashboard
+[2025-11-13T19:08:17.429Z]    Note: Requires authentication (401 expected)
+[2025-11-13T19:08:17.429Z] ------------------------------------------------------------
+[2025-11-13T19:08:17.430Z] 📊 FINAL SUMMARY:
+[2025-11-13T19:08:17.430Z]    Database: ✅ OK
+[2025-11-13T19:08:17.431Z]    Backend: ✅ OK
+[2025-11-13T19:08:17.431Z]    Flutter: ✅ OK
+[2025-11-13T19:08:17.432Z]    Admin: ✅ OK
+[2025-11-13T19:08:17.432Z] ✅ SYSTEM HEALTH: PASSED
+[2025-11-13T19:08:17.433Z] ============================================================
+

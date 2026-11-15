@@ -1,0 +1,1050 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import {
+  LayoutDashboard, Package, Barcode, Gavel, Users, ShoppingBag,
+  Truck, Printer, ShieldCheck, ClipboardCheck, History, Settings,
+  Plus, Search, RefreshCw, AlertTriangle, CheckCircle, XCircle,
+  DollarSign, Download, ArrowUpRight, LogOut, ChevronRight, Menu, X,
+  FileSpreadsheet, FileText, Check, Layers, ScanLine
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+const API_BASE = '/api/enterprise';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [kpiData, setKpiData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Inventory State
+  const [inventory, setInventory] = useState([]);
+  const [inventoryFilter, setInventoryFilter] = useState('all');
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  // New Product Form State
+  const [newProduct, setNewProduct] = useState({
+    barcode: '',
+    product_name: '',
+    description: '',
+    original_retail_price: '',
+    starting_bid_price: '',
+    buy_now_price: '',
+    min_acceptable_price: '',
+    actual_acquisition_cost: '',
+    auto_bid_increment: '1.00',
+    condition: 'New',
+    defect_alert: false,
+    defect_details: '',
+    warehouse_location: 'Main Warehouse Slot A',
+    notes: ''
+  });
+
+  // Barcode State
+  const [barcodes, setBarcodes] = useState([]);
+  const [barcodeQty, setBarcodeQty] = useState(10);
+  const [scanResult, setScanResult] = useState(null);
+  const [scannedCode, setScannedCode] = useState('');
+
+  // Stock Audit State
+  const [auditScans, setAuditScans] = useState([]);
+  const [auditInput, setAuditInput] = useState('');
+
+  // Orders & Label State
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [showRefusalModal, setShowRefusalModal] = useState(false);
+  const [refusalReason, setRefusalReason] = useState('Customer rejected upon delivery');
+
+  // Activity Logs
+  const [logs, setLogs] = useState([]);
+
+  // Fetch KPI
+  const fetchKPI = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API_BASE}/dashboard/kpi`);
+      if (res.data.success) setKpiData(res.data.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Inventory
+  const fetchInventory = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/inventory?status=${inventoryFilter}&search=${inventorySearch}`);
+      if (res.data.success) setInventory(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Fetch Barcodes
+  const fetchBarcodes = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/barcodes`);
+      if (res.data.success) setBarcodes(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Fetch Logs
+  const fetchLogs = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/logs/activity`);
+      if (res.data.success) setLogs(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchKPI();
+    fetchInventory();
+    fetchBarcodes();
+    fetchLogs();
+  }, []);
+
+  useEffect(() => {
+    fetchInventory();
+  }, [inventoryFilter, inventorySearch]);
+
+  // Handle Sequential Barcode Generation
+  const handleGenerateBarcodes = async () => {
+    try {
+      const res = await axios.post(`${API_BASE}/barcodes/generate`, { quantity: barcodeQty });
+      if (res.data.success) {
+        alert(res.data.message);
+        fetchBarcodes();
+        if (res.data.barcodes && res.data.barcodes.length > 0) {
+          setNewProduct(prev => ({ ...prev, barcode: res.data.barcodes[0] }));
+        }
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  // Export Inventory to Excel
+  const exportToExcel = () => {
+    if (inventory.length === 0) return alert('No data to export');
+    const ws = XLSX.utils.json_to_sheet(inventory.map(item => ({
+      Barcode: item.barcode,
+      ProductName: item.product_name,
+      OriginalRetailPrice: item.original_retail_price,
+      StartingBidPrice: item.starting_bid_price,
+      BuyNowPrice: item.buy_now_price,
+      Condition: item.condition,
+      Status: item.status,
+      Defect: item.defect_alert ? 'Yes: ' + item.defect_details : 'No',
+      WarehouseSlot: item.warehouse_location
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "InventoryReport");
+    XLSX.writeFile(wb, `IraqBid_Inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  // Export Inventory to PDF
+  const exportToPDF = () => {
+    if (inventory.length === 0) return alert('No data to export');
+    const doc = new jsPDF();
+    doc.text("IRAQ BID - Warehouse Inventory Report", 14, 15);
+    autoTable(doc, {
+      startY: 22,
+      head: [['Barcode', 'Product Name', 'Retail ($)', 'Buy Now ($)', 'Condition', 'Status']],
+      body: inventory.map(i => [i.barcode, i.product_name, i.original_retail_price, i.buy_now_price, i.condition, i.status])
+    });
+    doc.save(`IraqBid_Inventory_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
+  // Handle Register Product Submit
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`${API_BASE}/inventory/register`, newProduct);
+      if (res.data.success) {
+        alert('✅ ' + res.data.message);
+        setShowRegisterModal(false);
+        fetchInventory();
+        fetchKPI();
+      }
+    } catch (err) {
+      alert('❌ Error: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Barcode Lookup / Scan
+  const handleBarcodeLookup = async (code) => {
+    if (!code) return;
+    try {
+      const res = await axios.get(`${API_BASE}/barcodes/scan/${code}`);
+      setScanResult(res.data);
+    } catch (err) {
+      setScanResult({ error: err.response?.data?.message || "Barcode not found" });
+    }
+  };
+
+  // Audit Scan Action
+  const handleAuditScan = (code) => {
+    if (!code) return;
+    if (auditScans.find(s => s.code === code)) {
+      alert(`⚠️ Item ${code} already scanned in this session! Duplicate prevented.`);
+      return;
+    }
+    const matched = inventory.find(i => i.barcode === code);
+    setAuditScans([
+      {
+        code,
+        product_name: matched ? matched.product_name : 'Unexpected Item (Unregistered)',
+        status: matched ? 'MATCHED' : 'UNEXPECTED',
+        time: new Date().toLocaleTimeString()
+      },
+      ...auditScans
+    ]);
+    setAuditInput('');
+  };
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#090d16', color: '#f1f5f9', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      
+      {/* MODERN GLASS SIDEBAR */}
+      <div style={{
+        width: sidebarOpen ? '270px' : '76px',
+        backgroundColor: '#0f172a',
+        borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        padding: '20px 12px',
+        boxShadow: '4px 0 24px rgba(0,0,0,0.4)'
+      }}>
+        {/* LOGO */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {sidebarOpen && (
+            <div>
+              <div style={{ fontSize: '20px', fontWeight: '800', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '1px' }}>
+                IRAQ BID
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', marginTop: '2px' }}>ERP & Admin Platform</div>
+            </div>
+          )}
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', cursor: 'pointer', padding: '6px', borderRadius: '8px' }}>
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
+
+        {/* NAVIGATION LINKS */}
+        <div style={{ flex: 1, marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {[
+            { id: 'dashboard', label: '1. Executive KPI', icon: <LayoutDashboard size={18} /> },
+            { id: 'inventory', label: '2. Warehouse Stock', icon: <Package size={18} /> },
+            { id: 'barcodes', label: '3. Barcodes Register', icon: <Barcode size={18} /> },
+            { id: 'audit', label: '4. Physical Stock Audit', icon: <ClipboardCheck size={18} /> },
+            { id: 'orders', label: '5. Orders & Thermal Labels', icon: <ShoppingBag size={18} /> },
+            { id: 'customers', label: '6. 3-Strike Refusal Ban', icon: <Users size={18} /> },
+            { id: 'logs', label: '7. Activity Audit Trail', icon: <History size={18} /> }
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === item.id ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === item.id ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === item.id ? '600' : '500',
+                fontSize: '13px',
+                borderLeft: activeTab === item.id ? '3px solid #38bdf8' : '3px solid transparent',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {item.icon}
+              {sidebarOpen && <span>{item.label}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* MAIN VIEWPORT */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        
+        {/* MODERN GLASS APP BAR */}
+        <header style={{
+          height: '64px',
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 28px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 10px #22c55e' }}></span>
+            <span style={{ fontSize: '14px', fontWeight: '600', color: '#f8fafc' }}>
+              IRAQ BID • Production Central Node
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ fontSize: '12px', color: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.2)', padding: '5px 12px', borderRadius: '20px', fontWeight: '500' }}>
+              Neon Cloud PostgreSQL Connected
+            </span>
+            <div style={{ fontSize: '13px', color: '#94a3b8' }}>Admin Role</div>
+          </div>
+        </header>
+
+        {/* TAB 1: DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <div style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#f8fafc' }}>Enterprise Operations Overview</h2>
+                <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>Real-time warehouse inventory, auction bot status, and order performance.</p>
+              </div>
+              <button 
+                onClick={fetchKPI}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '9px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                <RefreshCw size={15} /> Sync Statistics
+              </button>
+            </div>
+
+            {/* KPI STATS CARDS */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+              gap: '18px',
+              marginBottom: '32px'
+            }}>
+              {[
+                { title: 'Total Registered Products', val: kpiData?.total_registered_products || 0, color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.1)' },
+                { title: 'Available Warehouse Stock', val: kpiData?.available_warehouse_products || 0, color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
+                { title: 'Currently In Auctions', val: kpiData?.in_auction_products || 0, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+                { title: 'Total Sold Products', val: kpiData?.sold_products || 0, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+                { title: 'Delivered Products', val: kpiData?.delivered_products || 0, color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.1)' },
+                { title: 'Damaged Products', val: kpiData?.damaged_products || 0, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+                { title: 'Missing Discrepancies', val: kpiData?.missing_products || 0, color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.1)' },
+                { title: 'Pending Orders', val: kpiData?.pending_orders || 0, color: '#eab308', bg: 'rgba(234, 179, 8, 0.1)' },
+                { title: 'Shipped In-Transit', val: kpiData?.shipped_orders || 0, color: '#a855f7', bg: 'rgba(168, 85, 247, 0.1)' },
+                { title: 'Banned Customers (3-Strike)', val: kpiData?.banned_customers || 0, color: '#dc2626', bg: 'rgba(220, 38, 38, 0.1)' },
+                { title: 'Total Employees', val: kpiData?.total_employees || 0, color: '#818cf8', bg: 'rgba(129, 140, 248, 0.1)' }
+              ].map((k, idx) => (
+                <div key={idx} style={{
+                  backgroundColor: '#0f172a',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ fontSize: '12px', fontWeight: '500', color: '#94a3b8', marginBottom: '10px' }}>{k.title}</div>
+                  <div style={{ fontSize: '28px', fontWeight: '800', color: k.color }}>{k.val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: INVENTORY MANAGEMENT */}
+        {activeTab === 'inventory' && (
+          <div style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '22px', fontWeight: '800' }}>Physical Warehouse Inventory</h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>Every physical product is individually tracked with its unique Code 128 barcode.</p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  onClick={exportToExcel}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#14532d', border: '1px solid #16a34a', color: '#4ade80', padding: '9px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                  <FileSpreadsheet size={15} /> Export Excel
+                </button>
+                <button 
+                  onClick={exportToPDF}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#7f1d1d', border: '1px solid #dc2626', color: '#fca5a5', padding: '9px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                  <FileText size={15} /> Export PDF
+                </button>
+                <button 
+                  onClick={() => setShowRegisterModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+                  <Plus size={16} /> Register Product
+                </button>
+              </div>
+            </div>
+
+            {/* FILTERS & SEARCH */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Search by Barcode or Product Name..."
+                value={inventorySearch}
+                onChange={e => setInventorySearch(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: '260px',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  padding: '9px 14px',
+                  color: '#fff',
+                  fontSize: '13px'
+                }}
+              />
+              {['all', 'available', 'in_auction', 'sold', 'delivered', 'damaged', 'missing'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setInventoryFilter(cat)}
+                  style={{
+                    backgroundColor: inventoryFilter === cat ? '#0284c7' : '#0f172a',
+                    color: inventoryFilter === cat ? '#fff' : '#94a3b8',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    textTransform: 'capitalize'
+                  }}>
+                  {cat.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+
+            {/* INVENTORY TABLE */}
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.08)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8' }}>
+                    <th style={{ padding: '14px 16px' }}>Barcode</th>
+                    <th style={{ padding: '14px 16px' }}>Product</th>
+                    <th style={{ padding: '14px 16px' }}>Original Retail</th>
+                    <th style={{ padding: '14px 16px' }}>Starting Bid</th>
+                    <th style={{ padding: '14px 16px' }}>Buy Now</th>
+                    <th style={{ padding: '14px 16px' }}>Condition</th>
+                    <th style={{ padding: '14px 16px' }}>Status</th>
+                    <th style={{ padding: '14px 16px' }}>1-Click Auction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventory.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                        No warehouse products found in this category. Click "Register Product" to add.
+                      </td>
+                    </tr>
+                  ) : (
+                    inventory.map(item => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                        <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontWeight: 'bold', color: '#38bdf8' }}>{item.barcode}</td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ fontWeight: '600' }}>{item.product_name}</div>
+                          {item.defect_alert && (
+                            <span style={{ fontSize: '11px', color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                              ⚠️ Defect: {item.defect_details}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>${item.original_retail_price}</td>
+                        <td style={{ padding: '14px 16px' }}>${item.starting_bid_price}</td>
+                        <td style={{ padding: '14px 16px', fontWeight: 'bold', color: '#22c55e' }}>${item.buy_now_price}</td>
+                        <td style={{ padding: '14px 16px' }}>{item.condition}</td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            backgroundColor: item.status === 'available' ? 'rgba(34, 197, 94, 0.15)' : item.status === 'in_auction' ? 'rgba(245, 158, 11, 0.15)' : '#334155',
+                            color: item.status === 'available' ? '#4ade80' : item.status === 'in_auction' ? '#fbbf24' : '#cbd5e1'
+                          }}>
+                            {item.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          {item.status === 'available' && (
+                            <button
+                              onClick={async () => {
+                                const hours = prompt("Enter Auction Duration in Hours (e.g. 24):", "24");
+                                if (hours) {
+                                  try {
+                                    const res = await axios.post(`${API_BASE}/auctions/publish`, {
+                                      inventory_id: item.id,
+                                      duration_hours: parseInt(hours)
+                                    });
+                                    alert(res.data.message);
+                                    fetchInventory();
+                                    fetchKPI();
+                                  } catch (e) {
+                                    alert(e.response?.data?.message || e.message);
+                                  }
+                                }
+                              }}
+                              style={{ backgroundColor: '#2563eb', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>
+                              Publish to App
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: BARCODES HUB */}
+        {activeTab === 'barcodes' && (
+          <div style={{ padding: '28px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '20px' }}>Barcode Registry (Code 128 Sequential Engine)</h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+              <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>Bulk Sequential Generator</h3>
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>Specify quantity (100, 500, 1000). Sequential format: IQB-000001.</p>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="5000"
+                    value={barcodeQty}
+                    onChange={e => setBarcodeQty(e.target.value)}
+                    style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', padding: '9px 12px', color: '#fff', width: '90px' }}
+                  />
+                  <button
+                    onClick={handleGenerateBarcodes}
+                    style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+                    Generate {barcodeQty} Barcodes
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>Handheld Scanner / Camera Verification</h3>
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>Scan with USB/Bluetooth barcode scanner or phone camera.</p>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="Scan Barcode (Auto-detects Code 128)..."
+                    value={scannedCode}
+                    onChange={e => setScannedCode(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleBarcodeLookup(scannedCode)}
+                    style={{ flex: 1, backgroundColor: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', padding: '9px 14px', color: '#fff', fontSize: '13px' }}
+                  />
+                  <button
+                    onClick={() => handleBarcodeLookup(scannedCode)}
+                    style={{ backgroundColor: '#10b981', border: 'none', color: '#fff', padding: '9px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                    Lookup
+                  </button>
+                </div>
+                {scanResult && (
+                  <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#1e293b', borderRadius: '8px', fontSize: '13px' }}>
+                    {scanResult.error ? (
+                      <span style={{ color: '#ef4444' }}>❌ {scanResult.error}</span>
+                    ) : (
+                      <div style={{ color: '#4ade80' }}>✅ Found: {scanResult.barcode} ({scanResult.status})</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: PHYSICAL STOCK AUDIT (Requirement #13) */}
+        {activeTab === 'audit' && (
+          <div style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ fontSize: '22px', fontWeight: '800' }}>Physical Stock Audit Session (Continuous Scanning)</h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>Reconcile physical warehouse stock with database records. Duplicate scans prevented.</p>
+              </div>
+              <button 
+                onClick={() => setAuditScans([])}
+                style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' }}>
+                Reset Audit Session
+              </button>
+            </div>
+
+            {/* AUDIT COUNTERS SUMMARY */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+              <div style={{ backgroundColor: '#0f172a', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Expected in Warehouse</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#38bdf8' }}>{inventory.filter(i => i.status === 'available').length}</div>
+              </div>
+              <div style={{ backgroundColor: '#0f172a', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Physically Scanned</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e' }}>{auditScans.length}</div>
+              </div>
+              <div style={{ backgroundColor: '#0f172a', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Missing Products</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>
+                  {Math.max(0, inventory.filter(i => i.status === 'available').length - auditScans.length)}
+                </div>
+              </div>
+              <div style={{ backgroundColor: '#0f172a', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Unexpected / Unregistered</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ef4444' }}>
+                  {auditScans.filter(s => s.status === 'UNEXPECTED').length}
+                </div>
+              </div>
+            </div>
+
+            {/* CONTINUOUS SCANNER INPUT */}
+            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="text"
+                  placeholder="Continuous Scan: Point barcode scanner and scan items rapidly..."
+                  value={auditInput}
+                  onChange={e => setAuditInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAuditScan(auditInput)}
+                  style={{ flex: 1, backgroundColor: '#1e293b', border: '1px solid #38bdf8', borderRadius: '8px', padding: '12px 16px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+                <button
+                  onClick={() => handleAuditScan(auditInput)}
+                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  Record Scan
+                </button>
+              </div>
+            </div>
+
+            {/* AUDIT LOG TABLE */}
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#1e293b', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px' }}>Scanned Barcode</th>
+                    <th style={{ padding: '12px 16px' }}>Product Recognition</th>
+                    <th style={{ padding: '12px 16px' }}>Audit Status</th>
+                    <th style={{ padding: '12px 16px' }}>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditScans.length === 0 ? (
+                    <tr><td colSpan="4" style={{ padding: '28px', textAlign: 'center', color: '#64748b' }}>Start scanning products to begin audit.</td></tr>
+                  ) : (
+                    auditScans.map((s, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#38bdf8' }}>{s.code}</td>
+                        <td style={{ padding: '12px 16px' }}>{s.product_name}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '11px', backgroundColor: s.status === 'MATCHED' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: s.status === 'MATCHED' ? '#4ade80' : '#ef4444' }}>
+                            {s.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#64748b' }}>{s.time}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: ORDERS & THERMAL LABELS */}
+        {activeTab === 'orders' && (
+          <div style={{ padding: '28px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '20px' }}>Customer Order Labels & Conversion Snapshot (1 USD = 1,520 IQD)</h2>
+            <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+                One main label per customer order. Supports Thermal label printers and standard A4 with frozen historical exchange rate.
+              </p>
+              <button
+                onClick={() => {
+                  setSelectedOrder({
+                    id: 101,
+                    customer_name: 'Ali Ahmed Hassan',
+                    customer_phone: '+964 770 123 4567',
+                    governorate: 'Baghdad (بغداد)',
+                    area: 'Al-Mansour',
+                    full_address: 'Street 14, Building 22, Near Clock Tower',
+                    product_name: 'Apple iPhone 15 Pro Max 256GB',
+                    item_barcode: 'IQB-000001',
+                    amount: '1200.00',
+                    shipping_cost: '10.00',
+                    usd_total: '1210.00',
+                    exchange_rate: 1520.00,
+                    iqd_total: (1210 * 1520).toLocaleString()
+                  });
+                  setShowLabelModal(true);
+                }}
+                style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '11px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600', fontSize: '13px' }}>
+                <Printer size={16} /> Open Thermal Customer Order Label Preview
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: REFUSAL & BAN CRM */}
+        {activeTab === 'customers' && (
+          <div style={{ padding: '28px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '20px' }}>Customer Refusal Tracker & 3-Strike Automatic Ban</h2>
+            <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.6' }}>
+                When returned merchandise physically arrives back at the warehouse, select "Mark Customer Refused".<br />
+                • Strike 1: 1 / 3<br />
+                • Strike 2: 2 / 3<br />
+                • Strike 3: <strong>AUTOMATIC ACCOUNT BAN</strong> (Blocked from future auctions & Buy Now).
+              </p>
+              <button
+                onClick={() => {
+                  setSelectedOrder({ id: 101 });
+                  setShowRefusalModal(true);
+                }}
+                style={{ backgroundColor: '#ef4444', border: 'none', color: '#fff', padding: '11px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600', marginTop: '16px', fontSize: '13px' }}>
+                <AlertTriangle size={16} /> Record Customer Refusal for Order #101
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: ACTIVITY LOGS */}
+        {activeTab === 'logs' && (
+          <div style={{ padding: '28px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '20px' }}>Permanent Enterprise Activity Audit Trail</h2>
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#1e293b', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', textAlign: 'left' }}>
+                    <th style={{ padding: '14px 16px' }}>Timestamp</th>
+                    <th style={{ padding: '14px 16px' }}>Employee</th>
+                    <th style={{ padding: '14px 16px' }}>Action Type</th>
+                    <th style={{ padding: '14px 16px' }}>Entity</th>
+                    <th style={{ padding: '14px 16px' }}>Details / Status Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.length === 0 ? (
+                    <tr><td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No activity records logged yet.</td></tr>
+                  ) : (
+                    logs.map(log => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                        <td style={{ padding: '12px 16px', color: '#64748b' }}>{new Date(log.created_at).toLocaleString()}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: '600' }}>{log.employee_name || 'Admin'}</td>
+                        <td style={{ padding: '12px 16px', color: '#38bdf8' }}>{log.action_type}</td>
+                        <td style={{ padding: '12px 16px' }}>{log.entity_type} #{log.entity_id}</td>
+                        <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
+                          {log.previous_status && `${log.previous_status} ➔ `}{log.new_status || JSON.stringify(log.details)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* MODAL 1: REGISTER PHYSICAL PRODUCT */}
+      {showRegisterModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '14px', padding: '28px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '14px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Register Physical Warehouse Product</h3>
+              <button onClick={() => setShowRegisterModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Scan or Enter Barcode (Unique)*</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. IQB-000001"
+                    value={newProduct.barcode}
+                    onChange={e => setNewProduct({ ...newProduct, barcode: e.target.value })}
+                    style={{ flex: 1, backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (barcodes.length > 0) {
+                        const unused = barcodes.find(b => b.status === 'unused');
+                        if (unused) setNewProduct({ ...newProduct, barcode: unused.barcode_number });
+                      } else {
+                        handleGenerateBarcodes();
+                      }
+                    }}
+                    style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '8px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                    Auto-Pick Unused
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Product Name*</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sony WH-1000XM5 Wireless Headphones"
+                  value={newProduct.product_name}
+                  onChange={e => setNewProduct({ ...newProduct, product_name: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Original Retail Price ($ USD)*</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="399.00"
+                    value={newProduct.original_retail_price}
+                    onChange={e => setNewProduct({ ...newProduct, original_retail_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Starting Bid Price ($ USD)*</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="50.00"
+                    value={newProduct.starting_bid_price}
+                    onChange={e => setNewProduct({ ...newProduct, starting_bid_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Buy Now Price ($ USD) (Mandatory)*</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="320.00"
+                    value={newProduct.buy_now_price}
+                    onChange={e => setNewProduct({ ...newProduct, buy_now_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#22c55e', fontWeight: 'bold' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Minimum Acceptable Price ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="250.00 (Secret bot limit)"
+                    value={newProduct.min_acceptable_price}
+                    onChange={e => setNewProduct({ ...newProduct, min_acceptable_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#f59e0b' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Actual Acquisition Cost ($ USD) (Private Admin Only)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Internal cost paid to acquire item"
+                  value={newProduct.actual_acquisition_cost}
+                  onChange={e => setNewProduct({ ...newProduct, actual_acquisition_cost: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#94a3b8' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Product Condition</label>
+                  <select
+                    value={newProduct.condition}
+                    onChange={e => setNewProduct({ ...newProduct, condition: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}>
+                    <option value="New">New</option>
+                    <option value="Like New">Like New</option>
+                    <option value="Used">Used</option>
+                    <option value="For Parts / Defective">For Parts / Defective</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Warehouse Location</label>
+                  <input
+                    type="text"
+                    value={newProduct.warehouse_location}
+                    onChange={e => setNewProduct({ ...newProduct, warehouse_location: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '9px 12px', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+
+              {/* DEFECT ALERT TOGGLE */}
+              <div style={{ padding: '14px', backgroundColor: '#1e293b', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: newProduct.defect_alert ? '#ef4444' : '#f8fafc' }}>
+                  <input
+                    type="checkbox"
+                    checked={newProduct.defect_alert}
+                    onChange={e => setNewProduct({ ...newProduct, defect_alert: e.target.checked })}
+                  />
+                  ⚠️ Defect Alert (Check if item has scratches, issues or defects)
+                </label>
+                {newProduct.defect_alert && (
+                  <div style={{ marginTop: '10px' }}>
+                    <textarea
+                      placeholder="Describe defect clearly (will be displayed to customers in mobile app)..."
+                      value={newProduct.defect_details}
+                      onChange={e => setNewProduct({ ...newProduct, defect_details: e.target.value })}
+                      style={{ width: '100%', height: '60px', backgroundColor: '#0f172a', border: '1px solid #ef4444', borderRadius: '8px', padding: '8px', color: '#fff', fontSize: '12px' }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 22px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                  Save & Add to Available
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: THERMAL CUSTOMER ORDER LABEL PREVIEW */}
+      {showLabelModal && selectedOrder && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="print-label-area" style={{ backgroundColor: '#ffffff', color: '#000000', width: '100%', maxWidth: '440px', borderRadius: '8px', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)' }}>
+            
+            <div style={{ borderBottom: '2px solid #000', paddingBottom: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 'bold' }}>IRAQ BID – مزادات العراق</div>
+              <div style={{ fontSize: '12px' }}>CUSTOMER ORDER SHIPPING LABEL</div>
+              <div style={{ fontSize: '11px', marginTop: '4px' }}>Order #{selectedOrder.id} • {new Date().toLocaleDateString()}</div>
+            </div>
+
+            <div style={{ padding: '12px 0', borderBottom: '1px dashed #000', fontSize: '13px', lineHeight: '1.5' }}>
+              <div><strong>Customer:</strong> {selectedOrder.customer_name}</div>
+              <div><strong>Phone:</strong> {selectedOrder.customer_phone}</div>
+              <div><strong>Province:</strong> {selectedOrder.governorate}</div>
+              <div><strong>Area:</strong> {selectedOrder.area}</div>
+              <div><strong>Address:</strong> {selectedOrder.full_address}</div>
+            </div>
+
+            <div style={{ padding: '12px 0', borderBottom: '2px solid #000', fontSize: '12px' }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>ITEMS IN ORDER:</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>• {selectedOrder.product_name}</span>
+                <strong>${selectedOrder.amount}</strong>
+              </div>
+              <div style={{ fontSize: '10px', color: '#555' }}>Item Barcode: {selectedOrder.item_barcode}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px' }}>
+                <span>Shipping Fee:</span>
+                <span>${selectedOrder.shipping_cost}</span>
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 0', borderBottom: '2px solid #000', textAlign: 'right' }}>
+              <div style={{ fontSize: '13px' }}>Total (USD): <strong>${selectedOrder.usd_total}</strong></div>
+              <div style={{ fontSize: '11px', color: '#444' }}>Applied Exchange Rate: 1 USD = 1,520 IQD</div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '6px', color: '#000' }}>
+                Total (IQD): {selectedOrder.iqd_total} دينار
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <div style={{ fontFamily: 'monospace', letterSpacing: '4px', fontSize: '18px', fontWeight: 'bold' }}>
+                ||| |||| || ||||| ||| ||
+              </div>
+              <div style={{ fontSize: '11px', fontFamily: 'monospace' }}>*{selectedOrder.item_barcode}*</div>
+            </div>
+
+            <div className="no-print" style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+              <button
+                onClick={() => setShowLabelModal(false)}
+                style={{ flex: 1, backgroundColor: '#e2e8f0', color: '#0f172a', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+                Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                style={{ flex: 1, backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+                🖨️ Print Label (Thermal / A4)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: CUSTOMER REFUSAL DIALOG */}
+      {showRefusalModal && selectedOrder && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '480px', borderRadius: '12px', padding: '24px', border: '1px solid #ef4444' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#ef4444', marginBottom: '12px' }}>
+              ⚠️ Confirm Customer Delivery Refusal
+            </h3>
+            <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
+              Did the customer genuinely refuse delivery? 3 confirmed refusals will automatically trigger an account ban.
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Refusal Reason:</label>
+              <textarea
+                value={refusalReason}
+                onChange={e => setRefusalReason(e.target.value)}
+                style={{ width: '100%', height: '70px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px', color: '#fff', fontSize: '12px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setShowRefusalModal(false)}
+                style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await axios.post(`${API_BASE}/customers/refusal`, {
+                      order_id: selectedOrder.id,
+                      reason: refusalReason
+                    });
+                    alert(res.data.message);
+                    setShowRefusalModal(false);
+                    fetchKPI();
+                    fetchLogs();
+                  } catch (err) {
+                    alert(err.response?.data?.message || err.message);
+                  }
+                }}
+                style={{ backgroundColor: '#dc2626', border: 'none', color: '#fff', padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Confirm Strike & Refusal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

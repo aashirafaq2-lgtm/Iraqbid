@@ -1,0 +1,114 @@
+:root {
+  --bg-main: #060913;
+  --card-bg: rgba(15, 23, 42, 0.75);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --accent-blue: #0284c7;
+  --accent-cyan: #38bdf8;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-main);
+  color: #f1f5f9;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.4);
+}
+
+/* Glass Card Overlay */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-hover {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-panel-hover:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 10px 30px -10px rgba(2, 132, 199, 0.25);
+  transform: translateY(-2px);
+}
+
+/* Responsive Sidebar & Mobile Layout */
+@media (max-width: 768px) {
+  .sidebar-container {
+    position: fixed !important;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1000 !important;
+    transform: translateX(0);
+    transition: transform 0.3s ease-in-out !important;
+  }
+  .sidebar-container.closed {
+    transform: translateX(-100%) !important;
+  }
+  .main-viewport {
+    width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+  }
+}
+
+/* Print Styles for Customer Order Label & Barcode Sticker Sheets */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-label-print, #thermal-label-print *,
+  #barcode-stickers-sheet, #barcode-stickers-sheet * {
+    visibility: visible;
+  }
+  #thermal-label-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100mm;
+    margin: 0;
+    padding: 6mm;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  #barcode-stickers-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 8mm;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

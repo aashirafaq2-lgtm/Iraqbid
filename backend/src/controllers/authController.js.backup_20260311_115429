@@ -1,0 +1,1345 @@
+import jwt from "jsonwebtoken";
+import { TwilioService } from "../services/twilioService.js";
+import pool from "../config/db.js";
+import bcrypt from "bcrypt";
+import { generateAccessToken, generateRefreshToken } from "../utils/tokenUtils.js";
+
+/**
+ * Normalize Iraq phone number
+ * Supports: +964, 964, 00964, or leading 0 (e.g., 07701234567)
+ */
+function normalizeIraqPhone(phone) {
+  if (!phone) return null;
+
+  // Remove spaces and special characters except +
+  let cleaned = phone.replace(/[\s-]/g, '');
+
+  // If already starts with +, don't prefix with +964 automatically 
+  // unless it's a specific Iraqi fix
+  if (cleaned.startsWith('+')) {
+    if (cleaned.startsWith('+964964')) {
+      return '+964' + cleaned.substring(7);
+    }
+    return cleaned;
+  }
+
+  // If starts with 00964, replace with +964
+  if (cleaned.startsWith('00964')) {
+    return '+964' + cleaned.substring(5);
+  }
+  // If starts with 964, add +
+  if (cleaned.startsWith('964')) {
+    return '+' + cleaned;
+  }
+  // If starts with 0, replace with +964
+  if (cleaned.startsWith('0')) {
+    return '+964' + cleaned.substring(1);
+  }
+  // If it's a 10-digit number starting with 7 (e.g., 7701234567), add +964
+  if (cleaned.length === 10 && cleaned.startsWith('7')) {
+    return '+964' + cleaned;
+  }
+
+  // Otherwise, if it has 9-11 digits and doesn't start with +, assume it needs +964
+  if (cleaned.length >= 9 && cleaned.length <= 11) {
+    return '+964' + cleaned;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Validate Iraq phone number
+ * Must start with +964, 964, 00964, or 0
+ * Format: +964 followed by 9-10 digits
+ */
+function isValidIraqPhone(phone) {
+  const normalized = normalizeIraqPhone(phone);
+  if (!normalized) return false;
+
+  // Iraq phone format: +964 followed by 9-10 digits
+  const phoneRegex = /^\+964[0-9]{9,10}$/;
+  return phoneRegex.test(normalized);
+}
+
+export const AuthController = {
+  /**
+   * POST /api/auth/admin-login
+   * 
+   * ADMIN PANEL LOGIN ENDPOINT (NO OTP)
+   * ====================================
+   * This endpoint is used by the Admin Panel for direct phone-based login.
+   * 
+   * NO OTP REQUIRED:
+   * - Direct login with phone + role
+   * - Does NOT use Twilio Verify
+   * - Does NOT send OTP
+   * - Does NOT verify OTP
+   * - Only for admin roles: superadmin, admin, moderator, viewer
+   */
+  async adminLogin(req, res) {
+    try {
+      console.log('📱 Admin Login Request:', {
+        body: req.body,
+        phone: req.body?.phone,
+        role: req.body?.role,
+      });
+
+      const { phone, role } = req.body;
+
+      if (!phone || !role) {
+        console.log('❌ Missing phone or role:', { phone: !!phone, role: !!role });
+        return res.status(400).json({
+          success: false,
+          message: "Phone number and role are required"
+        });
+      }
+
+      // Normalize phone first
+      const normalizedPhone = normalizeIraqPhone(phone);
+      console.log('📱 Phone normalization:', { original: phone, normalized: normalizedPhone });
+
+      // Validate phone format
+      if (!normalizedPhone) {
+        console.log('❌ Phone normalization failed:', { original: phone });
+        return res.status(400).json({
+          success: false,
+          message: `Invalid phone number format. Use Iraq format: +964XXXXXXXXXX (9-10 digits after +964). Received: ${phone}`
+        });
+      }
+
+      // Validate normalized phone format
+      if (!isValidIraqPhone(phone)) {
+        console.log('❌ Invalid phone format:', { original: phone, normalized: normalizedPhone });
+        return res.status(400).json({
+          success: false,
+          message: `Invalid phone number format. Use Iraq format: +964XXXXXXXXXX (9-10 digits after +964). Received: ${phone}`
+        });
+      }
+
+      // Validate and normalize role string
+      let normalizedRole = role.toLowerCase().replace(/\s+/g, ''); // Default to no space (superadmin)
+
+      // But if the frontend specifically sends "super admin", handles it flexibly
+      const adminRoles = ['superadmin', 'admin', 'moderator', 'viewer', 'employee', 'company_products', 'seller_products'];
+
+      // If the incoming role (with or without space) is a variant of superadmin
+      if (role.toLowerCase().includes('super') && role.toLowerCase().includes('admin')) {
+        normalizedRole = 'superadmin';
+      }
+
+      if (!adminRoles.includes(normalizedRole)) {
+        // Log mismatch for debugging
+        console.error(`❌ Role mismatch: received "${role}", normalized to "${normalizedRole}"`);
+        return res.status(400).json({
+          success: false,
+          message: `Invalid role. Must be one of: ${adminRoles.join(', ')}`
+        });
+      }
+
+      // Special handling for viewer role - can login with any Iraq phone number
+      if (normalizedRole === 'viewer') {
+        // Check if user exists, if not create viewer user
+        const viewerResult = await pool.query(
+          `SELECT id, name, email, phone, role, status 
+           FROM users 
+           WHERE phone = $1`,
+          [normalizedPhone]
+        );
+
+        let viewerUser;
+        if (viewerResult.rows.length === 0) {
+          // Create viewer user if doesn't exist
+          const viewerEmail = `viewer${normalizedPhone.replace(/\+/g, '')}@bidmaster.com`;
+          const insertResult = await pool.query(
+            `INSERT INTO users (name, email, phone, role, status, created_at)
+             VALUES ($1, $2, $3, 'viewer', 'approved', CURRENT_TIMESTAMP)
+             ON CONFLICT (phone) DO UPDATE SET
+               role = 'viewer',
+               status = 'approved'
+             RETURNING id, name, email, phone, role, status`,
+            [`Viewer ${normalizedPhone}`, viewerEmail, normalizedPhone]
+          );
+
+          viewerUser = insertResult.rows[0];
+          console.log(`✅ Viewer user auto-created: ${normalizedPhone}`);
+        } else {
+          viewerUser = viewerResult.rows[0];
+
+          // Update existing user to viewer role if needed
+          if (viewerUser.role !== 'viewer') {
+            await pool.query(
+              `UPDATE users SET role = 'viewer' WHERE id = $1`,
+              [viewerUser.id]
+            );
+            viewerUser.role = 'viewer';
+          }
+        }
+
+        // Check if user is blocked
+        if (viewerUser.status === 'blocked') {
+          return res.status(403).json({
+            success: false,
+            message: "Account is blocked"
+          });
+        }
+
+        // Generate tokens
+        const tokenPayload = {
+          id: viewerUser.id,
+          phone: viewerUser.phone,
+          role: 'viewer',
+          scope: 'admin'
+        };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        await pool.query(
+          "UPDATE users SET refresh_token = $1 WHERE id = $2",
+          [refreshToken, viewerUser.id]
+        );
+
+        console.log('✅ Viewer login successful (any Iraq number)');
+
+        return res.json({
+          success: true,
+          message: "Login successful",
+          accessToken,
+          refreshToken,
+          token: accessToken,
+          role: 'viewer',
+          user: {
+            id: viewerUser.id,
+            name: viewerUser.name,
+            email: viewerUser.email,
+            phone: viewerUser.phone,
+            role: 'viewer',
+            status: viewerUser.status
+          }
+        });
+      }
+
+      // Special handling for employee role - can login with any Iraq phone number
+      if (normalizedRole === 'employee') {
+        // Check if user exists, if not create employee user
+        const employeeResult = await pool.query(
+          `SELECT id, name, email, phone, role, status 
+           FROM users 
+           WHERE phone = $1`,
+          [normalizedPhone]
+        );
+
+        let employeeUser;
+        if (employeeResult.rows.length === 0) {
+          // Create employee user if doesn't exist
+          const employeeEmail = `employee${normalizedPhone.replace(/\+/g, '')}@bidmaster.com`;
+          const insertResult = await pool.query(
+            `INSERT INTO users (name, email, phone, role, status, created_at)
+             VALUES ($1, $2, $3, 'employee', 'approved', CURRENT_TIMESTAMP)
+             ON CONFLICT (phone) DO UPDATE SET
+               role = 'employee',
+               status = 'approved'
+             RETURNING id, name, email, phone, role, status`,
+            [`Employee ${normalizedPhone}`, employeeEmail, normalizedPhone]
+          );
+
+          employeeUser = insertResult.rows[0];
+          console.log(`✅ Employee user auto-created: ${normalizedPhone}`);
+        } else {
+          employeeUser = employeeResult.rows[0];
+
+          // Update existing user to employee role if needed
+          if (employeeUser.role !== 'employee') {
+            await pool.query(
+              `UPDATE users SET role = 'employee' WHERE id = $1`,
+              [employeeUser.id]
+            );
+            employeeUser.role = 'employee';
+          }
+        }
+
+        // Check if user is blocked
+        if (employeeUser.status === 'blocked') {
+          return res.status(403).json({
+            success: false,
+            message: "Account is blocked"
+          });
+        }
+
+        // Generate tokens
+        const tokenPayload = {
+          id: employeeUser.id,
+          phone: employeeUser.phone,
+          role: 'employee',
+          scope: 'admin'
+        };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        await pool.query(
+          "UPDATE users SET refresh_token = $1 WHERE id = $2",
+          [refreshToken, employeeUser.id]
+        );
+
+        console.log('✅ Employee login successful (any Iraq number)');
+
+        return res.json({
+          success: true,
+          message: "Login successful",
+          accessToken,
+          refreshToken,
+          token: accessToken,
+          role: 'employee',
+          user: {
+            id: employeeUser.id,
+            name: employeeUser.name,
+            email: employeeUser.email,
+            phone: employeeUser.phone,
+            role: 'employee',
+            status: employeeUser.status
+          }
+        });
+      }
+
+      // Check if user exists in database with matching phone and role
+      // Also try normalized version of original phone (handles spaces)
+      const originalNormalized = normalizeIraqPhone(phone);
+
+      // First try exact match with normalized phone and role
+      let userResult = await pool.query(
+        `SELECT id, name, email, phone, role, status 
+         FROM users 
+         WHERE phone = $1 AND (LOWER(role) = $2 OR LOWER(REPLACE(role, ' ', '')) = $2)`,
+        [normalizedPhone, normalizedRole]
+      );
+
+      // If not found, try with original phone format
+      if (userResult.rows.length === 0 && phone !== normalizedPhone) {
+        userResult = await pool.query(
+          `SELECT id, name, email, phone, role, status 
+           FROM users 
+           WHERE phone = $1 AND role = $2`,
+          [phone, normalizedRole]
+        );
+      }
+
+      // If still not found, try with originalNormalized
+      if (userResult.rows.length === 0 && originalNormalized !== normalizedPhone) {
+        userResult = await pool.query(
+          `SELECT id, name, email, phone, role, status 
+           FROM users 
+           WHERE phone = $1 AND role = $2`,
+          [originalNormalized, normalizedRole]
+        );
+      }
+
+      // Debug: Log what we're searching for
+      console.log('🔍 Admin login search:', {
+        normalizedPhone,
+        originalPhone: phone,
+        originalNormalized,
+        role: normalizedRole,
+        found: userResult.rows.length > 0
+      });
+
+      console.log('🔍 Database query:', {
+        normalizedPhone,
+        originalPhone: phone,
+        role: normalizedRole,
+        foundUsers: userResult.rows.length
+      });
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Phone number not found or role mismatch. Please check your credentials."
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      // Check if user is blocked
+      if (user.status === 'blocked') {
+        return res.status(403).json({
+          success: false,
+          message: "Account is blocked"
+        });
+      }
+
+      // Normalize role - keep original role (superadmin, admin, moderator are separate roles)
+      let userRole = user.role?.toLowerCase();
+
+      // Admin panel always gets "admin" scope
+      const scope = 'admin';
+
+      // Generate access and refresh tokens with admin scope
+      const tokenPayload = {
+        id: user.id,
+        phone: user.phone,
+        role: userRole,
+        scope: scope
+      };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = generateRefreshToken(tokenPayload);
+
+      // Save refresh token to database
+      await pool.query(
+        "UPDATE users SET refresh_token = $1 WHERE id = $2",
+        [refreshToken, user.id]
+      );
+
+      console.log('✅ Admin login successful (no OTP required)');
+
+      res.json({
+        success: true,
+        message: "Login successful",
+        accessToken,
+        refreshToken,
+        token: accessToken, // Keep for backward compatibility
+        role: userRole,
+        user: {
+          id: user.id,
+          name: user.name || "Super Admin",
+          email: user.email || "admin@bidmaster.dev",
+          phone: user.phone,
+          role: userRole,
+          status: user.status,
+          city: user.city || "Baghdad"
+        }
+      });
+    } catch (error) {
+      console.error("Error during admin login:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * POST /api/auth/login-phone
+   * 
+   * DEPRECATED: This endpoint is no longer used by Admin Panel
+   * Admin Panel now uses /api/auth/admin-login (no OTP)
+   * 
+   * This endpoint may still be used by legacy systems but should be migrated to admin-login
+   */
+  async loginPhone(req, res) {
+    try {
+      console.log('📱 Login Phone Request:', {
+        body: req.body,
+        phone: req.body?.phone,
+        otp: req.body?.otp,
+      });
+
+      const { phone, otp } = req.body;
+
+      if (!phone || !otp) {
+        console.log('❌ Missing phone or OTP:', { phone: !!phone, otp: !!otp });
+        return res.status(400).json({
+          success: false,
+          message: "Phone number and OTP are required"
+        });
+      }
+
+      // Normalize phone first
+      const normalizedPhone = normalizeIraqPhone(phone);
+      console.log('📱 Phone normalization:', { original: phone, normalized: normalizedPhone });
+
+      // Validate phone format
+      if (!normalizedPhone) {
+        console.log('❌ Phone normalization failed:', { original: phone });
+        return res.status(400).json({
+          success: false,
+          message: `Invalid phone number format. Use Iraq format: +964XXXXXXXXXX (9-10 digits after +964). Received: ${phone}`
+        });
+      }
+
+      // Validate normalized phone format
+      if (!isValidIraqPhone(phone)) {
+        console.log('❌ Invalid phone format:', { original: phone, normalized: normalizedPhone });
+        return res.status(400).json({
+          success: false,
+          message: `Invalid phone number format. Use Iraq format: +964XXXXXXXXXX (9-10 digits after +964). Received: ${phone}`
+        });
+      }
+
+      // ============================================================
+      // OTP VERIFICATION USING TWILIO VERIFY API
+      // ============================================================
+      try {
+        const verificationResult = await TwilioService.verifyOTP(normalizedPhone, otp);
+
+        if (!verificationResult.success || verificationResult.status !== 'approved') {
+          return res.status(401).json({
+            success: false,
+            message: verificationResult.message || 'Invalid OTP. Please check and try again.'
+          });
+        }
+
+        console.log('✅ OTP verified successfully via Twilio Verify');
+      } catch (error) {
+        console.error('❌ Twilio Verify error:', error.message);
+        return res.status(401).json({
+          success: false,
+          message: error.message || 'OTP verification failed. Please try again.'
+        });
+      }
+
+      // Check if user exists in database
+      const userResult = await pool.query(
+        `SELECT id, name, email, phone, role, status 
+         FROM users 
+         WHERE phone = $1 OR phone = $2`,
+        [normalizedPhone, phone]
+      );
+
+      console.log('🔍 Database query:', {
+        normalizedPhone,
+        originalPhone: phone,
+        foundUsers: userResult.rows.length
+      });
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Phone number not registered. Please contact administrator or register first."
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      // Check if user is blocked
+      if (user.status === 'blocked') {
+        return res.status(403).json({
+          success: false,
+          message: "Account is blocked"
+        });
+      }
+
+      // For loginPhone endpoint (legacy), keep original role
+      // Note: This endpoint is deprecated for admin panel, but may still be used
+      let userRole = user.role?.toLowerCase();
+
+      // Determine scope based on user role: admin roles get "admin" scope, others get "mobile"
+      const adminRoles = ['superadmin', 'admin', 'moderator', 'viewer', 'employee'];
+      const scope = adminRoles.includes(userRole) ? 'admin' : 'mobile';
+
+      // Generate access and refresh tokens with appropriate scope
+      const tokenPayload = {
+        id: user.id,
+        phone: user.phone,
+        role: userRole,
+        scope: scope
+      };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = generateRefreshToken(tokenPayload);
+
+      // Save refresh token to database
+      await pool.query(
+        "UPDATE users SET refresh_token = $1 WHERE id = $2",
+        [refreshToken, user.id]
+      );
+
+      res.json({
+        success: true,
+        message: "Login successful",
+        accessToken,
+        refreshToken,
+        token: accessToken, // Keep for backward compatibility
+        role: userRole,
+        user: {
+          id: user.id,
+          name: user.name || "Super Admin",
+          email: user.email || "admin@bidmaster.dev",
+          phone: user.phone,
+          role: userRole,
+          status: user.status,
+          city: user.city || "Baghdad"
+        }
+      });
+    } catch (error) {
+      console.error("Error during phone login:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * POST /api/auth/send-otp
+   * 
+   * SEND OTP ENDPOINT (Flutter Mobile App Only)
+   * ============================================
+   * 
+   * OTP SYSTEM:
+   * - Uses Twilio Verify API to send OTP via SMS
+   * - Uses Twilio verifications.create() to send OTP
+   * - Does NOT return OTP in response
+   * - Does NOT store OTP in-memory
+   * - No mock OTP logic
+  /**
+  /**
+   * POST /api/auth/signup
+   * Goal 4: Create user then send OTP
+   */
+  async signup(req, res) {
+    console.log("📝 [AUTH] Signup request received");
+    try {
+      const { phone, name } = req.body;
+      if (!phone) return res.status(400).json({ success: false, message: "Phone number is required" });
+
+      const normalizedPhone = normalizeIraqPhone(phone);
+      if (!normalizedPhone || !isValidIraqPhone(phone)) {
+        return res.status(400).json({ success: false, message: "Invalid Iraq phone format" });
+      }
+
+      const existingUser = await pool.query("SELECT id FROM users WHERE phone = $1", [normalizedPhone]);
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({ success: false, message: "This phone number is already registered. Please login." });
+      }
+
+      await pool.query(
+        "INSERT INTO users (name, phone, role, status, is_verified) VALUES ($1, $2, 'buyer', 'pending', false)",
+        [name || 'New User', normalizedPhone]
+      );
+
+      // Trigger OTP send
+      req.body.phone = normalizedPhone;
+      return AuthController.sendOTP(req, res);
+    } catch (error) {
+      console.error("❌ [SIGNUP ERROR]:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * POST /api/auth/login
+   * Goal 5: Check exists then send OTP
+   */
+  async login(req, res) {
+    console.log("🔑 [AUTH] Login request received");
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ success: false, message: "Phone number is required" });
+
+      const normalizedPhone = normalizeIraqPhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ success: false, message: "Invalid phone format" });
+
+      const userResult = await pool.query("SELECT id FROM users WHERE phone = $1", [normalizedPhone]);
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "User not registered" });
+      }
+
+      req.body.phone = normalizedPhone;
+      return AuthController.sendOTP(req, res);
+    } catch (error) {
+      console.error("❌ [LOGIN ERROR]:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * POST /api/auth/send-otp
+   * Goal 2: Validate, Generate, Save, Send
+   */
+  async sendOTP(req, res) {
+    console.log("📡 [OTP] Send OTP request received");
+    try {
+      const { phone } = req.body;
+      const normalizedPhone = normalizeIraqPhone(phone);
+
+      // MAGIC NUMBERS FOR APP STORE REVIEW
+      const magicNumbers = ['+9647500000000', '+964750000000', '+1234567890', '+964700000000', '+9644700000000', '+964000000000', '+1111111111', '750000000'];
+      const isMagic = magicNumbers.includes(normalizedPhone) || magicNumbers.includes(phone);
+
+      const otpCode = isMagic ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins for review comfort
+
+      // Save to otp_codes (Goal 6)
+      await pool.query(
+        "INSERT INTO otp_codes (phone_number, otp_code, expires_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        [normalizedPhone, otpCode, expiresAt]
+      );
+
+      // Send SMS (Goal 7)
+      if (!isMagic) {
+        const msgBody = `Your identification code for Iraq Bid is: ${otpCode}`;
+        await TwilioService.sendSMS(normalizedPhone, msgBody);
+      } else {
+        console.log(`✨ [MAGIC] Bypass SMS for ${normalizedPhone}, using 123456`);
+      }
+
+      return res.json({
+        success: true,
+        message: "OTP sent successfully",
+        debug_otp: isMagic ? '123456' : undefined // Optional: helps in dev
+      });
+    } catch (error) {
+      console.error("❌ [OTP SEND ERROR]:", error);
+      res.status(500).json({ success: false, message: "Failed to send OTP" });
+    }
+  },
+
+
+  /**
+   * POST /api/auth/verify-otp
+   * 
+   * VERIFY OTP ENDPOINT (Flutter Mobile App Only)
+   * =============================================
+   * 
+   * OTP SYSTEM:
+   * - Uses Twilio Verify API for OTP verification
+   * - Uses Twilio verificationChecks.create() to verify OTP
+   * - Does NOT use in-memory storage
+   * - No mock OTP logic
+   * 
+   * NOTE: Admin Panel does NOT use this endpoint
+   * Admin Panel uses /api/auth/admin-login (no OTP)
+   */
+  /**
+   * POST /api/auth/verify-otp
+   * Goal 3: Verify mismatch, expiry, mark verified, delete OTP, JWT
+   */
+  async verifyOTP(req, res) {
+    console.log("🔐 [OTP] Verify OTP request received");
+    try {
+      const { phone, otp } = req.body;
+      if (!phone || !otp) return res.status(400).json({ success: false, message: "Phone and OTP are required" });
+
+      const normalizedPhone = normalizeIraqPhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ success: false, message: "Invalid phone format" });
+
+      // MAGIC BYPASS LOGIC
+      const magicNumbers = ['+9647500000000', '+964750000000', '+1234567890', '+964700000000', '+9644700000000', '+964000000000', '+1111111111', '750000000'];
+      const isMagic = (magicNumbers.includes(normalizedPhone) || magicNumbers.includes(phone)) && otp === '123456';
+
+      let otpValid = false;
+      if (isMagic) {
+        console.log(`✨ [MAGIC] Bypassing DB check for ${normalizedPhone}`);
+        otpValid = true;
+      } else {
+        // Verify OTP in database (Goal 3)
+        const otpResult = await pool.query(
+          "SELECT * FROM otp_codes WHERE phone_number = $1 AND otp_code = $2 AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1",
+          [normalizedPhone, otp]
+        );
+        otpValid = otpResult.rows.length > 0;
+      }
+
+      if (!otpValid) {
+        return res.status(401).json({ success: false, message: "Invalid or expired OTP" });
+      }
+
+      // Mark user as verified (Goal 3)
+      await pool.query(
+        "UPDATE users SET is_verified = true, status = 'approved' WHERE phone = $1",
+        [normalizedPhone]
+      );
+
+      // Clean up OTP entry (if exists)
+      await pool.query("DELETE FROM otp_codes WHERE phone_number = $1", [normalizedPhone]);
+
+      // Fetch user for token generation
+      const userResult = await pool.query("SELECT * FROM users WHERE phone = $1", [normalizedPhone]);
+
+      // If magic number user doesn't exist, we might need a fallback or create one
+      if (userResult.rows.length === 0) {
+        // For review safety, if it's a magic number, auto-create a user if missing
+        if (isMagic) {
+          const newUser = await pool.query(
+            "INSERT INTO users (name, phone, role, status, is_verified) VALUES ($1, $2, 'buyer', 'approved', true) RETURNING *",
+            ['Apple Reviewer', normalizedPhone]
+          );
+          userResult.rows[0] = newUser.rows[0];
+        } else {
+          return res.status(404).json({ success: false, message: "User not found after verification" });
+        }
+      }
+
+      const user = userResult.rows[0];
+
+      // Generate JWT
+      const tokenPayload = { id: user.id, phone: user.phone, role: user.role, scope: 'mobile' };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = generateRefreshToken(tokenPayload);
+
+      await pool.query("UPDATE users SET refresh_token = $1 WHERE id = $2", [refreshToken, user.id]);
+
+      console.log(`✅ [OTP] Verified ${normalizedPhone}`);
+
+      return res.json({
+        success: true,
+        message: "Verification successful",
+        accessToken,
+        refreshToken,
+        token: accessToken,
+        role: user.role,   // ✅ FIX: Top-level role for Flutter role detection
+        user: {
+          id: user.id,
+          name: user.name,   // ✅ FIX: Include name so Flutter can detect new vs existing user
+          phone: user.phone,
+          role: user.role,
+          status: user.status,
+          email: user.email || null
+        }
+      });
+    } catch (error) {
+      console.error("❌ [VERIFY ERROR]:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  // POST /api/auth/register
+  // Legacy register method (now handled by signup + verify-otp flow)
+  async register(req, res) {
+    return res.status(410).json({ success: false, message: "Use /signup and /verify-otp endpoints" });
+  },
+
+
+  // GET /api/auth/profile
+  async getProfile(req, res) {
+    try {
+      const userId = req.user.id;
+
+      const result = await pool.query(
+        `SELECT id, name, email, phone, role, status, bids_count, created_at 
+         FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result.rows[0]
+      });
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  // PATCH /api/auth/profile
+  async updateProfile(req, res) {
+    try {
+      const userId = req.user.id;
+      const { name, phone, role, city, area } = req.body;
+
+      if (!name && !phone && !role && !city && !area) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one field (name, phone, role, city, or area) is required"
+        });
+      }
+
+      const updates = [];
+      const params = [];
+      let paramCount = 1;
+
+      if (name) {
+        updates.push(`name = $${paramCount++}`);
+        params.push(name);
+      }
+
+      if (city) {
+        updates.push(`city = $${paramCount++}`);
+        params.push(city);
+      }
+
+      if (area) {
+        updates.push(`area = $${paramCount++}`);
+        params.push(area);
+      }
+
+      if (phone) {
+        const normalizedPhone = normalizeIraqPhone(phone);
+        if (!isValidIraqPhone(phone)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid phone number format"
+          });
+        }
+
+        // Check if phone is already taken by another user
+        const existingUser = await pool.query(
+          "SELECT id FROM users WHERE phone = $1 AND id != $2",
+          [normalizedPhone, userId]
+        );
+
+        if (existingUser.rows.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Phone number already in use"
+          });
+        }
+
+        updates.push(`phone = $${paramCount++}`);
+        params.push(normalizedPhone);
+      }
+
+      if (role) {
+        const normalizedRole = role.toLowerCase().trim();
+
+        // Map old role names to new ones (for backward compatibility)
+        let mappedRole = normalizedRole;
+        if (normalizedRole === 'buyer') {
+          mappedRole = 'company_products';
+        } else if (normalizedRole === 'seller') {
+          mappedRole = 'seller_products';
+        }
+
+        // Only allow company_products/seller_products roles to be set by users themselves
+        if (mappedRole !== 'company_products' && mappedRole !== 'seller_products') {
+          return res.status(400).json({
+            success: false,
+            message: "Role must be 'company_products' or 'seller_products' (or 'buyer'/'seller' for backward compatibility)"
+          });
+        }
+
+        updates.push(`role = $${paramCount++}`);
+        params.push(mappedRole);
+      }
+
+      params.push(userId);
+      const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} 
+                     RETURNING id, name, email, phone, role, status, created_at`;
+
+      const result = await pool.query(query, params);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      const updatedUser = result.rows[0];
+
+      // Generate new tokens when role is updated
+      let responseData = {
+        success: true,
+        message: "Profile updated successfully",
+        data: updatedUser
+      };
+
+      if (role) {
+        // Get scope from current token (preserve scope)
+        const scope = req.user.scope || 'mobile';
+
+        // Normalize role for token
+        let tokenRole = updatedUser.role?.toLowerCase();
+        if (tokenRole === 'admin') {
+          tokenRole = 'superadmin';
+        }
+
+        // Generate new tokens with updated role
+        const tokenPayload = {
+          id: updatedUser.id,
+          phone: updatedUser.phone,
+          role: tokenRole,
+          scope: scope
+        };
+
+        const newAccessToken = generateAccessToken(tokenPayload);
+        const newRefreshToken = generateRefreshToken(tokenPayload);
+
+        // Update refresh token in database
+        await pool.query(
+          "UPDATE users SET refresh_token = $1 WHERE id = $2",
+          [newRefreshToken, updatedUser.id]
+        );
+
+        // Include new tokens in response
+        responseData.accessToken = newAccessToken;
+        responseData.refreshToken = newRefreshToken;
+        responseData.role = tokenRole;
+      }
+
+      res.json(responseData);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  // POST /api/auth/refresh
+  async refreshToken(req, res) {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          success: false,
+          error: "refresh_token_required",
+          message: "Refresh token is required"
+        });
+      }
+
+      // Verify refresh token
+      const { verifyRefreshToken } = await import("../utils/tokenUtils.js");
+      const decoded = verifyRefreshToken(refreshToken);
+
+      if (!decoded || !decoded.id) {
+        return res.status(401).json({
+          success: false,
+          error: "invalid_refresh_token",
+          message: "Invalid or expired refresh token"
+        });
+      }
+
+      // Check if refresh token exists in database
+      const userResult = await pool.query(
+        "SELECT id, name, email, phone, role, status, refresh_token FROM users WHERE id = $1",
+        [decoded.id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "user_not_found",
+          message: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      // Verify refresh token matches stored token
+      if (user.refresh_token !== refreshToken) {
+        return res.status(401).json({
+          success: false,
+          error: "invalid_refresh_token",
+          message: "Refresh token mismatch"
+        });
+      }
+
+      // Check if user is blocked
+      if (user.status === 'blocked') {
+        return res.status(403).json({
+          success: false,
+          error: "account_blocked",
+          message: "Account is blocked"
+        });
+      }
+
+      // Normalize role
+      let userRole = user.role?.toLowerCase();
+      if (userRole === 'admin') {
+        userRole = 'superadmin';
+      }
+
+      // Preserve scope from the old refresh token
+      const scope = decoded.scope || 'mobile';
+
+      // Generate new tokens (token rotation) with preserved scope
+      const tokenPayload = {
+        id: user.id,
+        phone: user.phone,
+        role: userRole,
+        scope: scope
+      };
+      const newAccessToken = generateAccessToken(tokenPayload);
+      const newRefreshToken = generateRefreshToken(tokenPayload);
+
+      // Update refresh token in database (rotation)
+      await pool.query(
+        "UPDATE users SET refresh_token = $1 WHERE id = $2",
+        [newRefreshToken, user.id]
+      );
+
+      res.json({
+        success: true,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        role: userRole
+      });
+    } catch (error) {
+      console.error("Error refreshing token:", error);
+      res.status(500).json({
+        success: false,
+        error: "internal_error",
+        message: "Internal server error"
+      });
+    }
+  },
+
+  // POST /api/auth/logout
+  async logout(req, res) {
+    try {
+      // Clear refresh token from database if user is authenticated
+      if (req.user && req.user.id) {
+        await pool.query(
+          "UPDATE users SET refresh_token = NULL WHERE id = $1",
+          [req.user.id]
+        );
+      }
+
+      res.json({
+        success: true,
+        message: "Logged out successfully"
+      });
+    } catch (error) {
+      console.error("Error during logout:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * POST /api/auth/change-phone/send-otp
+   * 
+   * SEND OTP FOR PHONE CHANGE
+   * ==========================
+   * Sends OTP to the new phone number for verification
+   * Works for both Flutter app users and Admin panel users
+   */
+  async sendChangePhoneOTP(req, res) {
+    try {
+      const { newPhone } = req.body;
+      const userId = req.user.id;
+
+      if (!newPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "New phone number is required"
+        });
+      }
+
+      // Normalize and validate new phone
+      const normalizedNewPhone = normalizeIraqPhone(newPhone);
+
+      if (!isValidIraqPhone(newPhone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format. Use Iraq format: +964XXXXXXXXXX"
+        });
+      }
+
+      // Check if new phone is already in use by another user
+      const existingUser = await pool.query(
+        "SELECT id FROM users WHERE phone = $1 AND id != $2",
+        [normalizedNewPhone, userId]
+      );
+
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "This phone number is already in use by another account"
+        });
+      }
+
+      // Send OTP to new phone using Twilio Verify
+      try {
+        await TwilioService.sendOTP(normalizedNewPhone);
+        console.log(`✅ Change phone OTP sent successfully to ${normalizedNewPhone} via Twilio Verify`);
+      } catch (error) {
+        console.error(`❌ Failed to send change phone OTP via Twilio Verify:`, error.message);
+        return res.status(500).json({
+          success: false,
+          message: error.message || "Failed to send OTP. Please try again."
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "OTP sent successfully to new phone number"
+      });
+    } catch (error) {
+      console.error("Error sending change phone OTP:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * POST /api/auth/change-phone/verify
+   * 
+   * VERIFY OTP AND UPDATE PHONE
+   * ============================
+   * Verifies OTP for new phone and updates user's phone number
+   * Works for both Flutter app users and Admin panel users
+   */
+  async verifyChangePhone(req, res) {
+    try {
+      const { newPhone, otp } = req.body;
+      const userId = req.user.id;
+
+      if (!newPhone || !otp) {
+        return res.status(400).json({
+          success: false,
+          message: "New phone number and OTP are required"
+        });
+      }
+
+      // Normalize new phone
+      const normalizedNewPhone = normalizeIraqPhone(newPhone);
+
+      if (!isValidIraqPhone(newPhone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format"
+        });
+      }
+
+      // Verify OTP using Twilio Verify
+      try {
+        const verificationResult = await TwilioService.verifyOTP(normalizedNewPhone, otp);
+
+        if (!verificationResult.success || verificationResult.status !== 'approved') {
+          return res.status(401).json({
+            success: false,
+            message: verificationResult.message || 'Invalid OTP. Please check and try again.'
+          });
+        }
+
+        console.log('✅ Change phone OTP verified successfully via Twilio Verify');
+      } catch (error) {
+        console.error('❌ Twilio Verify error:', error.message);
+        return res.status(401).json({
+          success: false,
+          message: error.message || 'OTP verification failed. Please try again.'
+        });
+      }
+
+      // Check if new phone is already in use
+      const existingUser = await pool.query(
+        "SELECT id FROM users WHERE phone = $1 AND id != $2",
+        [normalizedNewPhone, userId]
+      );
+
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "This phone number is already in use by another account"
+        });
+      }
+
+      // Update user's phone number
+      const result = await pool.query(
+        `UPDATE users 
+         SET phone = $1 
+         WHERE id = $2 
+         RETURNING id, name, email, phone, role, status`,
+        [normalizedNewPhone, userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      const updatedUser = result.rows[0];
+
+      // Generate new tokens with updated phone
+      const tokenPayload = {
+        id: updatedUser.id,
+        phone: updatedUser.phone,
+        role: updatedUser.role?.toLowerCase() || 'company_products',
+        scope: req.user.scope || 'mobile'
+      };
+
+      const newAccessToken = generateAccessToken(tokenPayload);
+      const newRefreshToken = generateRefreshToken(tokenPayload);
+
+      // Update refresh token in database
+      await pool.query(
+        "UPDATE users SET refresh_token = $1 WHERE id = $2",
+        [newRefreshToken, updatedUser.id]
+      );
+
+      console.log(`✅ Phone number updated successfully for user ${userId}: ${normalizedNewPhone}`);
+
+      res.json({
+        success: true,
+        message: "Phone number updated successfully",
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          phone: updatedUser.phone,
+          role: updatedUser.role,
+          status: updatedUser.status
+        }
+      });
+    } catch (error) {
+      console.error("Error verifying change phone:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * DELETE /api/auth/delete-account
+   * 
+   * MANDATORY FOR APPLE APP STORE:
+   * Delete user account and all associated data
+   */
+  async deleteAccount(req, res) {
+    console.log(`🗑️ [AUTH] Delete Account requested for user: ${req.user.id}`);
+    const client = await pool.connect();
+    try {
+      const userId = req.user.id;
+
+      await client.query('BEGIN');
+
+      // 1. Delete user's bids
+      await client.query('DELETE FROM bids WHERE user_id = $1', [userId]);
+
+      // 2. Delete user's products
+      await client.query('DELETE FROM products WHERE seller_id = $1', [userId]);
+
+      // 3. Delete user's notifications
+      await client.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
+
+      // 4. Delete user's wallet info (if exists)
+      const walletTableExists = await client.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'wallets'
+        )
+      `);
+      if (walletTableExists.rows[0].exists) {
+        await client.query('DELETE FROM wallets WHERE user_id = $1', [userId]);
+      }
+
+      // 5. Finally delete the user
+      await client.query('DELETE FROM users WHERE id = $1', [userId]);
+
+      await client.query('COMMIT');
+      console.log(`✅ [AUTH] Account deleted successfully: ${userId}`);
+
+      res.json({
+        success: true,
+        message: "Your account and all associated data have been permanently deleted."
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("❌ [DELETE ACCOUNT ERROR]:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+};

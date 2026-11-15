@@ -1,0 +1,58 @@
+/* Keyframes for smooth animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.4)); }
+  50% { opacity: 0.85; filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.7)); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Custom Scrollbar for sleek modern dark UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Thermal Label Print Styling */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-label-area, .print-label-area * {
+    visibility: visible;
+  }
+  .print-label-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100mm !important;
+    max-width: 100mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: 1px solid #000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
