@@ -394,9 +394,10 @@ export const MobileProductController = {
       }
 
       // Execute main query and count query in PARALLEL for maximum speed
+      // Order by created_at DESC so newly registered products appear instantly at the TOP of the app!
       const similarityOrder = search ? `similarity(p.title, $${paramCount - 1}) DESC, ` : '';
       const [result, countResult] = await Promise.all([
-        pool.query(query + ` ORDER BY ${similarityOrder} p.auction_end_time ASC LIMIT $${paramCount} OFFSET $${paramCount + 1} `, [...params, parseInt(limit), (parseInt(page) - 1) * parseInt(limit)]),
+        pool.query(query + ` ORDER BY ${similarityOrder} p.created_at DESC, p.id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1} `, [...params, parseInt(limit), (parseInt(page) - 1) * parseInt(limit)]),
         pool.query(countQuery, countParams)
       ]);
 
