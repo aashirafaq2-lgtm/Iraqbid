@@ -137,6 +137,7 @@ export default function App() {
   // --- 5. ORDERS & SHIPPING & LABEL STATE ---
   const [allAppOrders, setAllAppOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderTypeFilter, setOrderTypeFilter] = useState('all'); // 'all' | 'buy_now' | 'auction'
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [showRefusalModal, setShowRefusalModal] = useState(false);
@@ -1308,6 +1309,7 @@ export default function App() {
                 { label: 'Active Auctions', val: kpiData?.active_auctions ?? '0', color: '#818cf8', icon: <Gavel size={22} />, tab: 'live_auctions' },
                 { label: 'Completed Auctions', val: kpiData?.completed_auctions ?? '0', color: '#6366f1', icon: <CheckCircle size={22} />, tab: 'live_auctions' },
                 { label: 'Pending Orders', val: kpiData?.pending_orders ?? '0', color: '#f59e0b', icon: <Truck size={22} />, tab: 'orders' },
+                { label: '⚡ Buy Now Orders', val: allAppOrders.filter(o => o.shipping_notes?.includes('BUY NOW') || o.shipping_notes?.includes('Buy Now')).length, color: '#10b981', icon: <ShoppingBag size={22} />, tab: 'orders' },
                 { label: 'Shipped Orders', val: kpiData?.shipped_orders ?? '0', color: '#3b82f6', icon: <Truck size={22} />, tab: 'shipping' },
                 { label: 'Delivered Orders', val: kpiData?.delivered_orders ?? '0', color: '#10b981', icon: <CheckCircle size={22} />, tab: 'shipping' },
                 { label: 'Banned Customers', val: kpiData?.banned_customers ?? '0', color: '#ef4444', icon: <Ban size={22} />, tab: 'users' },
@@ -1869,19 +1871,74 @@ export default function App() {
            ===================================================================== */}
         {(activeTab === 'orders' || activeTab === 'shipping') && canAccessOps && (
           <div style={{ padding: '32px' }}>
-            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Winners, Orders & Shipping Management</h2>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '28px' }}>
-              Tracks customer orders from auction win to delivery and receipt confirmation. Supports single thermal shipping label generation.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Winners, Orders & Shipping Management</h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>
+                  Tracks all customer orders placed via Direct Buy Now and Live Auction wins.
+                </p>
+              </div>
+
+              {/* Order Type Filter Tabs */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setOrderTypeFilter('all')}
+                  style={{
+                    backgroundColor: orderTypeFilter === 'all' ? '#0284c7' : '#1e293b',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}>
+                  All Orders ({allAppOrders.length})
+                </button>
+                <button
+                  onClick={() => setOrderTypeFilter('buy_now')}
+                  style={{
+                    backgroundColor: orderTypeFilter === 'buy_now' ? '#16a34a' : '#1e293b',
+                    color: '#fff',
+                    border: '1px solid rgba(22, 163, 74, 0.4)',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                  ⚡ Direct Buy Now ({allAppOrders.filter(o => o.shipping_notes?.includes('BUY NOW') || o.shipping_notes?.includes('Buy Now')).length})
+                </button>
+                <button
+                  onClick={() => setOrderTypeFilter('auction')}
+                  style={{
+                    backgroundColor: orderTypeFilter === 'auction' ? '#d97706' : '#1e293b',
+                    color: '#fff',
+                    border: '1px solid rgba(217, 119, 6, 0.4)',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                  🏆 Auction Wins ({allAppOrders.filter(o => !o.shipping_notes?.includes('BUY NOW') && !o.shipping_notes?.includes('Buy Now')).length})
+                </button>
+              </div>
+            </div>
 
             <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
-                    <th style={{ padding: '16px 20px' }}>Order #</th>
+                    <th style={{ padding: '16px 20px' }}>Order # / Type</th>
                     <th style={{ padding: '16px 20px' }}>Product Title</th>
-                    <th style={{ padding: '16px 20px' }}>Customer Name</th>
-                    <th style={{ padding: '16px 20px' }}>Phone</th>
+                    <th style={{ padding: '16px 20px' }}>Customer & Delivery Info</th>
                     <th style={{ padding: '16px 20px' }}>Total (USD)</th>
                     <th style={{ padding: '16px 20px' }}>Total (IQD 1,520)</th>
                     <th style={{ padding: '16px 20px' }}>Shipping Status</th>
@@ -1891,45 +1948,76 @@ export default function App() {
                 <tbody>
                   {allAppOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                         {ordersLoading ? 'Loading orders...' : 'No customer orders placed yet'}
                       </td>
                     </tr>
                   ) : (
-                    allAppOrders.map(o => {
-                      const usdTotal = parseFloat(o.amount || o.final_price || 0);
-                      const iqdTotal = Math.round(usdTotal * 1520).toLocaleString();
-                      return (
-                        <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{o.order_number || `#${o.id}`}</td>
-                          <td style={{ padding: '16px 20px', fontWeight: '600' }}>{o.product_name || o.title || 'Won Item'}</td>
-                          <td style={{ padding: '16px 20px' }}>{o.buyer_name || 'Customer'}</td>
-                          <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{o.buyer_phone || o.buyer_email}</td>
-                          <td style={{ padding: '16px 20px', fontWeight: 'bold', color: '#10b981' }}>${usdTotal.toFixed(2)}</td>
-                          <td style={{ padding: '16px 20px', fontWeight: 'bold', color: '#38bdf8' }}>{iqdTotal} IQD</td>
-                          <td style={{ padding: '16px 20px' }}>
-                            <span style={{ fontSize: '11px', textTransform: 'uppercase', padding: '4px 10px', borderRadius: '6px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: '700' }}>
-                              {o.delivery_status || 'Pending'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '16px 20px', display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleOpenLabel(o)}
-                              style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                              <Printer size={14} /> Thermal Label
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedOrder(o);
-                                setShowRefusalModal(true);
-                              }}
-                              style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                              Refusal Strike
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
+                    allAppOrders
+                      .filter(o => {
+                        const isBuyNow = o.shipping_notes?.includes('BUY NOW') || o.shipping_notes?.includes('Buy Now');
+                        if (orderTypeFilter === 'buy_now') return isBuyNow;
+                        if (orderTypeFilter === 'auction') return !isBuyNow;
+                        return true;
+                      })
+                      .map(o => {
+                        const isBuyNow = o.shipping_notes?.includes('BUY NOW') || o.shipping_notes?.includes('Buy Now');
+                        const usdTotal = parseFloat(o.amount || o.final_price || 0);
+                        const iqdTotal = Math.round(usdTotal * 1520).toLocaleString();
+                        return (
+                          <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '16px 20px' }}>
+                              <div style={{ fontWeight: 'bold' }}>{o.order_number || `#${o.id}`}</div>
+                              {isBuyNow ? (
+                                <span style={{ fontSize: '10px', backgroundColor: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', display: 'inline-block', marginTop: '4px' }}>
+                                  ⚡ BUY NOW DIRECT
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '10px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', display: 'inline-block', marginTop: '4px' }}>
+                                  🏆 AUCTION WIN
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '16px 20px', fontWeight: '600', maxWidth: '240px' }}>
+                              <div>{o.product_name || o.title || 'Product'}</div>
+                              {o.item_barcode && (
+                                <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace', marginTop: '2px' }}>{o.item_barcode}</div>
+                              )}
+                            </td>
+                            <td style={{ padding: '16px 20px', maxWidth: '260px' }}>
+                              <div style={{ fontWeight: '600', color: '#f8fafc' }}>{o.buyer_name || 'Customer'}</div>
+                              <div style={{ fontSize: '12px', color: '#38bdf8' }}>{o.buyer_phone || 'No phone'}</div>
+                              {o.shipping_notes && (
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', lineHeight: '1.3' }}>
+                                  {o.shipping_notes}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '16px 20px', fontWeight: 'bold', color: '#10b981' }}>${usdTotal.toFixed(2)}</td>
+                            <td style={{ padding: '16px 20px', fontWeight: 'bold', color: '#38bdf8' }}>{iqdTotal} IQD</td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <span style={{ fontSize: '11px', textTransform: 'uppercase', padding: '4px 10px', borderRadius: '6px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: '700' }}>
+                                {o.delivery_status || 'Pending'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '16px 20px', display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => handleOpenLabel(o)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                                <Printer size={14} /> Thermal Label
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedOrder(o);
+                                  setShowRefusalModal(true);
+                                }}
+                                style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                                Refusal Strike
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                   )}
                 </tbody>
               </table>

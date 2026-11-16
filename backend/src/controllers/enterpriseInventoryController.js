@@ -37,17 +37,17 @@ export const getAllInventory = async (req, res) => {
 
     if (status && status !== 'all') {
       params.push(status);
-      conditions.push(`status = $${params.length}`);
+      conditions.push(`i.status = $${params.length}`);
     }
 
     if (condition) {
       params.push(condition);
-      conditions.push(`condition = $${params.length}`);
+      conditions.push(`i.condition = $${params.length}`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      conditions.push(`(product_name ILIKE $${params.length} OR barcode ILIKE $${params.length} OR warehouse_location ILIKE $${params.length})`);
+      conditions.push(`(i.product_name ILIKE $${params.length} OR i.barcode ILIKE $${params.length} OR i.warehouse_location ILIKE $${params.length})`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -64,7 +64,12 @@ export const getAllInventory = async (req, res) => {
     params.push(limit, offset);
     const result = await pool.query(query, params);
 
-    const countQuery = `SELECT COUNT(*) FROM inventory_items ${whereClause}`;
+    const countQuery = `
+      SELECT COUNT(*) 
+      FROM inventory_items i 
+      LEFT JOIN users u ON i.receiving_employee_id = u.id 
+      ${whereClause}
+    `;
     const countResult = await pool.query(countQuery, params.slice(0, conditions.length));
 
     res.json({
@@ -486,12 +491,12 @@ export const getBarcodes = async (req, res) => {
 
     if (status && status !== 'all') {
       params.push(status);
-      conditions.push(`status = $${params.length}`);
+      conditions.push(`b.status = $${params.length}`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      conditions.push(`barcode_number ILIKE $${params.length}`);
+      conditions.push(`b.barcode_number ILIKE $${params.length}`);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -507,7 +512,7 @@ export const getBarcodes = async (req, res) => {
     params.push(limit, offset);
 
     const result = await pool.query(query, params);
-    const count = await pool.query(`SELECT COUNT(*) FROM barcodes ${where}`, params.slice(0, conditions.length));
+    const count = await pool.query(`SELECT COUNT(*) FROM barcodes b ${where}`, params.slice(0, conditions.length));
 
     res.json({
       success: true,

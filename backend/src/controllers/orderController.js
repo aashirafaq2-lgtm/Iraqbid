@@ -13,10 +13,13 @@ export const OrderController = {
           p.image_url as product_image,
           buyer.name as buyer_name,
           buyer.email as buyer_email,
+          buyer.phone as buyer_phone,
           seller.name as seller_name,
-          seller.email as seller_email
+          seller.email as seller_email,
+          inv.barcode as item_barcode
         FROM orders o
         LEFT JOIN products p ON o.product_id = p.id
+        LEFT JOIN inventory_items inv ON o.inventory_item_id = inv.id OR inv.published_product_id = p.id
         LEFT JOIN users buyer ON o.buyer_id = buyer.id
         LEFT JOIN users seller ON o.seller_id = seller.id
         WHERE 1=1

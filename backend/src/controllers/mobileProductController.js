@@ -789,6 +789,10 @@ export const MobileProductController = {
       // 2. Generate unique order number
       const orderNumber = 'ORD-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
 
+      // Check linked inventory_item
+      const invRes = await pool.query("SELECT id FROM inventory_items WHERE published_product_id = $1", [product.id]);
+      const inventoryItemId = invRes.rows[0]?.id || null;
+
       // 3. Create order in orders table
       const notesCombined = [
         shipping_address ? `Address: ${shipping_address}` : '',
@@ -799,24 +803,24 @@ export const MobileProductController = {
       const orderRes = await pool.query(`
         INSERT INTO orders (
           order_number, product_id, buyer_id, amount, final_price, shipping_cost,
-          status, payment_status, delivery_status, shipping_notes, created_at
+          status, payment_status, delivery_status, shipping_notes, inventory_item_id, created_at
         ) VALUES (
           $1, $2, $3, $4, $4, 0,
-          'pending', 'pending', 'pending', $5, CURRENT_TIMESTAMP
+          'pending', 'pending', 'pending', $5, $6, CURRENT_TIMESTAMP
         ) RETURNING *;
       `, [
         orderNumber,
         product.id,
         buyerId,
         buyNowPrice,
-        notesCombined
+        `⚡ BUY NOW: ${notesCombined}`,
+        inventoryItemId
       ]);
 
       // 4. Update product to sold
       await pool.query(`
         UPDATE products 
         SET status = 'sold',
-            auction_status = 'sold',
             highest_bidder_id = $1,
             current_bid = $2,
             current_price = $2,
@@ -826,10 +830,17 @@ export const MobileProductController = {
       `, [buyerId, buyNowPrice, product.id]);
 
       // 5. Update linked inventory_item if exists
-      await pool.query(
-        "UPDATE inventory_items SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE published_product_id = $1",
-        [product.id]
-      );
+      if (inventoryItemId) {
+        await pool.query(
+          "UPDATE inventory_items SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+          [inventoryItemId]
+        );
+      } else {
+        await pool.query(
+          "UPDATE inventory_items SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE published_product_id = $1",
+          [product.id]
+        );
+      }
 
       // 6. Notify admins
       notifyAdmins(

@@ -34,6 +34,10 @@ conn.on('ready', () => {
       {
         local: 'E:/Ahmed work/iraq-bid-app-master/backend/src/Routes/productRoutes.js',
         remote: '/var/www/bid-backend/Bid-app-Backend/src/Routes/productRoutes.js'
+      },
+      {
+        local: 'E:/Ahmed work/iraq-bid-app-master/backend/src/controllers/orderController.js',
+        remote: '/var/www/bid-backend/Bid-app-Backend/src/controllers/orderController.js'
       }
     ];
 
