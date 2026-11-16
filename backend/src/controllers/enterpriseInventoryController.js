@@ -175,59 +175,8 @@ export const registerProduct = async (req, res) => {
     // Mark barcode as assigned in barcode register if exists
     await pool.query("UPDATE barcodes SET status = 'assigned', assigned_item_id = $1 WHERE barcode_number = $2", [newItem.id, barcode.trim()]);
 
-    // 🚀 INSTANT LIVE PUBLISH TO MOBILE APP (1 second sync)
-    // As requested: Product goes live in mobile application automatically with all uploaded photos
-    let publishedProductId = null;
-    try {
-      const endTime = new Date(Date.now() + 72 * 60 * 60 * 1000); // 3-day default live auction
-      const mainImage = imgArray.length > 0 ? imgArray[0] : '';
-      const targetCatId = parsedCategoryId || 2;
-
-      const productRes = await pool.query(`
-        INSERT INTO products (
-          title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
-          image_url, images, category_id, status, auction_end_time,
-          source_type, condition, defect_alert, defect_details, original_retail_price, real_price, special_description, product_source
-        ) VALUES (
-          $1, $2, $3, $3, $3, $3, $4,
-          $5, $6, $7, 'approved', $8,
-          'company', $9, $10, $11, $12, $12, $13, 'company'
-        ) RETURNING id;
-      `, [
-        product_name.trim(),
-        description || '',
-        numStartingBid,
-        numBuyNow,
-        mainImage,
-        JSON.stringify(imgArray),
-        targetCatId,
-        endTime,
-        condition,
-        Boolean(defect_alert),
-        defect_details || '',
-        numOriginalPrice,
-        (special_description || '').trim()
-      ]);
-
-      if (productRes.rows.length > 0) {
-        publishedProductId = productRes.rows[0].id;
-        await pool.query(
-          "UPDATE inventory_items SET status = 'in_auction', published_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-          [publishedProductId, newItem.id]
-        );
-        newItem.status = 'in_auction';
-        newItem.published_product_id = publishedProductId;
-
-        // 📣 Broadcast instant push notification to all users
-        notifyAllUsersNewProduct(
-          `🔥 New Live Product: ${product_name.trim()}`,
-          `New product "${product_name.trim()}" has just been added! Tap to view details and place your bid.`,
-          publishedProductId
-        ).catch(err => console.error("Error broadcasting new registration notif:", err));
-      }
-    } catch (publishErr) {
-      console.error("Auto-publish on register warning:", publishErr.message);
-    }
+    // Product is saved to warehouse inventory with status = 'available'.
+    // Admin manually reviews and publishes to live mobile auction when ready.
 
     await logActivity({
       employeeId: req.user?.id,
@@ -241,7 +190,7 @@ export const registerProduct = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Physical warehouse product registered successfully!",
+      message: "Physical warehouse product registered successfully! Available in inventory for review.",
       data: newItem
     });
   } catch (error) {
@@ -267,7 +216,7 @@ export const updateInventoryItem = async (req, res) => {
       'starting_bid_price', 'buy_now_price', 'min_acceptable_price',
       'actual_acquisition_cost', 'auto_bid_increment', 'condition',
       'defect_alert', 'defect_details', 'defect_images', 'warehouse_location',
-      'notes', 'status'
+      'notes', 'status', 'special_description'
     ];
 
     const fields = [];
@@ -294,6 +243,38 @@ export const updateInventoryItem = async (req, res) => {
 
     const result = await pool.query(updateQuery, values);
     const updated = result.rows[0];
+
+    // If item is already published to live auction, sync changes to products table
+    if (updated.published_product_id) {
+      try {
+        await pool.query(`
+          UPDATE products 
+          SET 
+            title = COALESCE($1, title),
+            description = COALESCE($2, description),
+            original_retail_price = COALESCE($3, original_retail_price),
+            real_price = COALESCE($3, real_price),
+            buy_now_price = COALESCE($4, buy_now_price),
+            starting_price = COALESCE($5, starting_price),
+            starting_bid = COALESCE($5, starting_bid),
+            condition = COALESCE($6, condition),
+            special_description = COALESCE($7, special_description),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $8
+        `, [
+          updates.product_name,
+          updates.description,
+          updates.original_retail_price ? parseFloat(updates.original_retail_price) : null,
+          updates.buy_now_price ? parseFloat(updates.buy_now_price) : null,
+          updates.starting_bid_price ? parseFloat(updates.starting_bid_price) : null,
+          updates.condition,
+          updates.special_description,
+          updated.published_product_id
+        ]);
+      } catch (syncErr) {
+        console.error("Warning syncing updated inventory to product:", syncErr.message);
+      }
+    }
 
     await logActivity({
       employeeId: req.user?.id,

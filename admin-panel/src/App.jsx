@@ -618,6 +618,26 @@ export default function App() {
     }
   };
 
+  // --- UNPUBLISH / STOP LIVE AUCTION ---
+  const handleUnpublishAuction = async (item) => {
+    if (!window.confirm(`Are you sure you want to stop/unpublish live auction for "${item.product_name}"? The item will be returned to warehouse stock and removed from live bidding.`)) {
+      return;
+    }
+    try {
+      const res = await axios.post(`${API_ENTERPRISE}/auctions/unpublish`, {
+        inventory_id: item.id
+      });
+      if (res.data.success) {
+        alert(res.data.message || 'Auction stopped and returned to warehouse inventory.');
+        fetchInventory();
+        fetchKPI();
+        fetchLiveAuctions();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
   // --- SEQUENTIAL BARCODE GENERATION ---
   const handleGenerateBarcodes = async (qty = barcodeQty) => {
     setBarcodeLoading(true);
@@ -1469,8 +1489,17 @@ export default function App() {
                                   style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
                                   Publish Auction
                                 </button>
+                              ) : item.status === 'in_auction' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <span style={{ fontSize: '11px', color: '#eab308', fontWeight: 'bold' }}>Live #{item.published_product_id}</span>
+                                  <button
+                                    onClick={() => handleUnpublishAuction(item)}
+                                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                                    Stop / Unpublish
+                                  </button>
+                                </div>
                               ) : (
-                                <span style={{ fontSize: '11px', color: '#64748b' }}>Published #{item.published_product_id}</span>
+                                <span style={{ fontSize: '11px', color: '#64748b' }}>{item.status}</span>
                               )}
                             </td>
                           )}
@@ -2537,6 +2566,20 @@ export default function App() {
                   value={newProduct.special_description || ''}
                   onChange={e => setNewProduct({ ...newProduct, special_description: e.target.value })}
                   style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Full Product Description (Manual Input from Admin) */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#38bdf8', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  Full Product Description / Specifications (Manual Input)
+                </label>
+                <textarea
+                  rows="3"
+                  placeholder="Enter custom description, specifications, features, warranty, box contents..."
+                  value={newProduct.description || ''}
+                  onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(56, 189, 248, 0.4)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', lineHeight: '1.5', boxSizing: 'border-box' }}
                 />
               </div>
 

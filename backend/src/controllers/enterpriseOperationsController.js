@@ -38,28 +38,29 @@ export const publishToAuction = async (req, res) => {
       INSERT INTO products (
         title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
         image_url, images, category_id, status, auction_end_time,
-        source_type, condition, defect_alert, defect_details, original_retail_price, product_source
+        source_type, condition, defect_alert, defect_details, original_retail_price, real_price, special_description, product_source
       ) VALUES (
         $1, $2, $3, $3, $3, $3, $4,
         $5, $6, $7, 'approved', $8,
-        'company', $9, $10, $11, $12, 'company'
+        'company', $9, $10, $11, $12, $12, $13, 'company'
       ) RETURNING id;
     `;
 
     const mainImage = item.images && item.images.length > 0 ? item.images[0] : '';
     const productRes = await client.query(productQuery, [
       item.product_name,
-      item.description,
+      item.description || '',
       item.starting_bid_price,
       item.buy_now_price,
       mainImage,
       JSON.stringify(item.images || []),
-      targetCatId,
+      item.category_id || targetCatId || 2,
       endTime,
       item.condition,
       item.defect_alert,
       item.defect_details,
-      item.original_retail_price
+      item.original_retail_price,
+      (item.special_description || '').trim()
     ]);
 
     const publishedProductId = productRes.rows[0].id;
@@ -95,6 +96,59 @@ export const publishToAuction = async (req, res) => {
       message: "Product published to live auction successfully!",
       published_product_id: publishedProductId,
       end_time: endTime
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Manually unpublish / cancel an auction and return item to available warehouse stock
+ */
+export const unpublishAuction = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { inventory_id } = req.body;
+
+    const itemRes = await client.query("SELECT * FROM inventory_items WHERE id = $1 FOR UPDATE", [inventory_id]);
+    if (itemRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: "Inventory item not found" });
+    }
+
+    const item = itemRes.rows[0];
+    if (item.published_product_id) {
+      await client.query(
+        "UPDATE products SET status = 'cancelled', auction_end_time = NOW(), updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [item.published_product_id]
+      );
+    }
+
+    await client.query(
+      "UPDATE inventory_items SET status = 'available', published_product_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [inventory_id]
+    );
+
+    await client.query('COMMIT');
+
+    await logActivity({
+      employeeId: req.user?.id,
+      employeeName: req.user?.full_name || req.user?.name || req.user?.email || 'Admin',
+      actionType: 'AUCTION_UNPUBLISHED',
+      entityType: 'INVENTORY_ITEM',
+      entityId: inventory_id,
+      previousStatus: 'in_auction',
+      newStatus: 'available',
+      details: { unpublishedProductId: item.published_product_id }
+    });
+
+    res.json({
+      success: true,
+      message: "Auction cancelled and unpublished successfully. Item returned to warehouse stock."
     });
   } catch (error) {
     await client.query('ROLLBACK');

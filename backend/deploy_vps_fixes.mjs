@@ -20,6 +20,14 @@ conn.on('ready', () => {
         remote: '/var/www/bid-backend/Bid-app-Backend/src/controllers/enterpriseInventoryController.js'
       },
       {
+        local: 'E:/Ahmed work/iraq-bid-app-master/backend/src/controllers/enterpriseOperationsController.js',
+        remote: '/var/www/bid-backend/Bid-app-Backend/src/controllers/enterpriseOperationsController.js'
+      },
+      {
+        local: 'E:/Ahmed work/iraq-bid-app-master/backend/src/Routes/enterpriseRoutes.js',
+        remote: '/var/www/bid-backend/Bid-app-Backend/src/Routes/enterpriseRoutes.js'
+      },
+      {
         local: 'E:/Ahmed work/iraq-bid-app-master/backend/src/controllers/mobileProductController.js',
         remote: '/var/www/bid-backend/Bid-app-Backend/src/controllers/mobileProductController.js'
       },

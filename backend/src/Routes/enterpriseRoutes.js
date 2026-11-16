@@ -15,6 +15,7 @@ import {
 } from "../controllers/enterpriseInventoryController.js";
 import {
   publishToAuction,
+  unpublishAuction,
   getOrderDetailsWithLabel,
   updateShippingStatus,
   recordCustomerRefusal,
@@ -78,8 +79,9 @@ router.post("/barcodes/generate-range", requirePermission('inventory', 'create')
 router.get("/barcodes", requirePermission('inventory', 'view'), getBarcodes);
 router.get("/barcodes/scan/:barcode", lookupBarcode);
 
-// --- 4. AUCTION PUBLISH ---
+// --- 4. AUCTION PUBLISH & UNPUBLISH ---
 router.post("/auctions/publish", requirePermission('auctions', 'create'), publishToAuction);
+router.post("/auctions/unpublish", requirePermission('auctions', 'edit'), unpublishAuction);
 
 // --- 5. ORDERS, SHIPPING & ORDER LABELS ---
 router.get("/orders/:id/label", requirePermission('orders', 'view'), getOrderDetailsWithLabel);
