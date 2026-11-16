@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { logActivity } from "../middleware/enterprisePermissions.js";
+import { notifyAllUsersNewProduct } from "../utils/notificationUtils.js";
 
 // ==========================================
 // 1. INVENTORY MANAGEMENT CONTROLLER
@@ -171,6 +172,59 @@ export const registerProduct = async (req, res) => {
 
     // Mark barcode as assigned in barcode register if exists
     await pool.query("UPDATE barcodes SET status = 'assigned', assigned_item_id = $1 WHERE barcode_number = $2", [newItem.id, barcode.trim()]);
+
+    // 🚀 INSTANT LIVE PUBLISH TO MOBILE APP (1 second sync)
+    // As requested: Product goes live in mobile application automatically with all uploaded photos
+    let publishedProductId = null;
+    try {
+      const endTime = new Date(Date.now() + 72 * 60 * 60 * 1000); // 3-day default live auction
+      const mainImage = imgArray.length > 0 ? imgArray[0] : '';
+      const targetCatId = parsedCategoryId || 2;
+
+      const productRes = await pool.query(`
+        INSERT INTO products (
+          title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
+          image_url, images, category_id, status, auction_end_time,
+          source_type, condition, defect_alert, defect_details, original_retail_price, product_source
+        ) VALUES (
+          $1, $2, $3, $3, $3, $3, $4,
+          $5, $6, $7, 'approved', $8,
+          'company', $9, $10, $11, $12, 'company'
+        ) RETURNING id;
+      `, [
+        product_name.trim(),
+        description || '',
+        numStartingBid,
+        numBuyNow,
+        mainImage,
+        JSON.stringify(imgArray),
+        targetCatId,
+        endTime,
+        condition,
+        Boolean(defect_alert),
+        defect_details || '',
+        numOriginalPrice
+      ]);
+
+      if (productRes.rows.length > 0) {
+        publishedProductId = productRes.rows[0].id;
+        await pool.query(
+          "UPDATE inventory_items SET status = 'in_auction', published_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+          [publishedProductId, newItem.id]
+        );
+        newItem.status = 'in_auction';
+        newItem.published_product_id = publishedProductId;
+
+        // 📣 Broadcast instant push notification to all users
+        notifyAllUsersNewProduct(
+          `🔥 New Live Product: ${product_name.trim()}`,
+          `New product "${product_name.trim()}" has just been added! Tap to view details and place your bid.`,
+          publishedProductId
+        ).catch(err => console.error("Error broadcasting new registration notif:", err));
+      }
+    } catch (publishErr) {
+      console.error("Auto-publish on register warning:", publishErr.message);
+    }
 
     await logActivity({
       employeeId: req.user?.id,

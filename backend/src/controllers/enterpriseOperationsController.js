@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { logActivity } from "../middleware/enterprisePermissions.js";
+import { notifyAllUsersNewProduct } from "../utils/notificationUtils.js";
 
 // ==========================================
 // 3. AUCTION PUBLISHING & AUTO-BIDDER CONTROLLER
@@ -81,6 +82,13 @@ export const publishToAuction = async (req, res) => {
       newStatus: 'in_auction',
       details: { publishedProductId, endTime, startingBid: item.starting_bid_price }
     });
+
+    // 📣 Send immediate broadcast notification to all app users
+    notifyAllUsersNewProduct(
+      `🔥 New Live Auction: ${item.product_name}`,
+      `A new item "${item.product_name}" has just started live bidding! Tap to place your bid now.`,
+      publishedProductId
+    ).catch(err => console.error("Error broadcasting new auction notification:", err));
 
     res.json({
       success: true,

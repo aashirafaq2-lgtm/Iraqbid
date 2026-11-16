@@ -74,3 +74,41 @@ export async function notifyAdmins(title, message, type, relatedId = null) {
         console.error('❌ [notifyAdmins] Error:', error.message);
     }
 }
+
+/**
+ * Send a notification to all active users when a new product is published to live auction
+ * @param {string} title - Notification title
+ * @param {string} message - Notification message body
+ * @param {string|number} productId - Published Product ID
+ */
+export async function notifyAllUsersNewProduct(title, message, productId) {
+    try {
+        console.log(`📣 [notifyAllUsersNewProduct] Broadcasting new product ${productId} to all users...`);
+        
+        // 1. Send push to all subscribers via OneSignal
+        await OneSignalService.sendToAll(title, message, {
+            type: 'product',
+            productId: productId
+        });
+
+        // 2. Insert into notifications table for active users
+        const usersResult = await pool.query(
+            "SELECT id FROM users WHERE is_banned = FALSE AND (status IS NULL OR status = 'active') LIMIT 500"
+        );
+
+        if (usersResult.rows.length > 0) {
+            const insertPromises = usersResult.rows.map(user =>
+                pool.query(
+                    `INSERT INTO notifications (title, message, user_id, type, is_read, created_at)
+                     VALUES ($1, $2, $3, 'product', false, CURRENT_TIMESTAMP)`,
+                    [title, message, user.id]
+                ).catch(err => console.warn(`Could not insert notif for user ${user.id}:`, err.message))
+            );
+            await Promise.allSettled(insertPromises);
+        }
+
+        console.log(`✅ [notifyAllUsersNewProduct] Broadcast completed for product ${productId}`);
+    } catch (error) {
+        console.error('❌ [notifyAllUsersNewProduct] Error:', error.message);
+    }
+}

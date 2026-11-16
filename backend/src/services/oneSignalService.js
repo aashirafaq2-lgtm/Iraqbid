@@ -72,5 +72,45 @@ export const OneSignalService = {
         } catch (error) {
             console.error('❌ Error in sendToUser:', error.message);
         }
+    },
+
+    /**
+     * Send push notification to all subscribed users
+     * @param {string} heading - Title
+     * @param {string} content - Body
+     * @param {object} data - Custom payload
+     */
+    async sendToAll(heading, content, data = {}) {
+        const appId = process.env.ONESIGNAL_APP_ID;
+        const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+
+        if (!appId || !apiKey) {
+            console.warn('⚠️ OneSignal credentials missing. Skipping broadcast notification.');
+            return;
+        }
+
+        try {
+            const response = await axios.post(
+                'https://onesignal.com/api/v1/notifications',
+                {
+                    app_id: appId,
+                    included_segments: ['Subscribed Users', 'Total Subscriptions'],
+                    headings: { en: heading, ar: heading },
+                    contents: { en: content, ar: content },
+                    data: data,
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Basic ${apiKey}`,
+                    },
+                }
+            );
+
+            console.log('✅ OneSignal broadcast sent to all users:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('❌ Error broadcasting OneSignal notification:', error.response?.data || error.message);
+        }
     }
 };
