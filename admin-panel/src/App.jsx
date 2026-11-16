@@ -514,7 +514,7 @@ export default function App() {
         const uploadedUrls = res.data.data.map(item => item.url);
         setNewProduct(prev => ({
           ...prev,
-          images: [...prev.images, ...uploadedUrls]
+          images: [...(prev.images || []), ...uploadedUrls]
         }));
       }
     } catch (err) {

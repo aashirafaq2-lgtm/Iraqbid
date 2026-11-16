@@ -142,7 +142,7 @@ export const handleSingleUpload = async (req, res) => {
 router.post('/image', verifyUser, upload.single('image'), handleSingleUpload);
 
 // POST /api/uploads/images - Upload multiple images (mobile users)
-router.post('/images', verifyUser, upload.array('images', 5), async (req, res) => {
+router.post('/images', verifyUser, upload.array('images', 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -287,7 +287,7 @@ router.post('/admin/image', verifyAdmin, upload.single('image'), async (req, res
 });
 
 // POST /api/uploads/admin/images - Upload multiple images (admin users)
-router.post('/admin/images', verifyAdmin, upload.array('images', 5), async (req, res) => {
+router.post('/admin/images', verifyAdmin, upload.array('images', 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({

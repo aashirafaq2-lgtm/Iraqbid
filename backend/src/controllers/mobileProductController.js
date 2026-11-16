@@ -324,7 +324,7 @@ export const MobileProductController = {
         LEFT JOIN users u ON p.seller_id = u.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users buyer ON p.highest_bidder_id = buyer.id
-        WHERE p.status = 'approved'
+        WHERE (p.status = 'approved' OR p.status = 'active')
           AND p.auction_end_time IS NOT NULL
           AND p.auction_end_time > NOW()
       `;
@@ -362,7 +362,7 @@ export const MobileProductController = {
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users u ON p.seller_id = u.id
-        WHERE p.status = 'approved'
+        WHERE (p.status = 'approved' OR p.status = 'active')
           AND p.auction_end_time IS NOT NULL
           AND p.auction_end_time > NOW()
       `;

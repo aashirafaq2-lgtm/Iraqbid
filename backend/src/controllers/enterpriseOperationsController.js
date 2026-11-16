@@ -32,15 +32,16 @@ export const publishToAuction = async (req, res) => {
     const endTime = new Date(Date.now() + duration_hours * 60 * 60 * 1000);
 
     // Reuse/Create entry in products table so it appears immediately in the Iraq Bid mobile app
+    // Status must be 'approved' because mobile app queries WHERE status = 'approved' AND auction_end_time > NOW()
     const productQuery = `
       INSERT INTO products (
         title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
         image_url, images, category_id, status, auction_end_time,
-        source_type, condition, defect_alert, defect_details, original_retail_price
+        source_type, condition, defect_alert, defect_details, original_retail_price, product_source
       ) VALUES (
         $1, $2, $3, $3, $3, $3, $4,
-        $5, $6, $7, 'active', $8,
-        'company', $9, $10, $11, $12
+        $5, $6, $7, 'approved', $8,
+        'company', $9, $10, $11, $12, 'company'
       ) RETURNING id;
     `;
 
@@ -110,7 +111,7 @@ export const runAutoBidderCycle = async () => {
              i.id as inventory_id, i.min_acceptable_price, i.auto_bid_increment, i.buy_now_price
       FROM products p
       JOIN inventory_items i ON i.published_product_id = p.id
-      WHERE p.status = 'active'
+      WHERE (p.status = 'active' OR p.status = 'approved')
         AND p.auction_end_time <= $1
         AND p.auction_end_time > $2
         AND i.min_acceptable_price IS NOT NULL
