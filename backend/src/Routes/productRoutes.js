@@ -18,6 +18,7 @@ router.get("/mine", verifyUser, MobileProductController.getMyProducts);
 router.post("/create", verifyUser, MobileProductController.createProduct);
 router.post("/seller/products", verifyUser, MobileProductController.createProduct); // Alias for /create
 router.post("/upload", verifyUser, upload.single('image'), handleSingleUpload); // Alias for checklist
+router.post("/:id/buy-now", verifyUser, MobileProductController.buyNow);
 router.put("/:id", verifyUser, MobileProductController.updateProduct);
 router.delete("/:id", verifyUser, MobileProductController.deleteProduct);
 

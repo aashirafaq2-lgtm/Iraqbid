@@ -106,7 +106,8 @@ export default function App() {
     defect_alert: false,
     defect_details: '',
     warehouse_location: 'Main Warehouse Slot A',
-    notes: ''
+    notes: '',
+    special_description: ''
   });
 
   // --- 3. BARCODES HUB STATE ---
@@ -545,7 +546,8 @@ export default function App() {
       const payload = {
         barcode: newProduct.barcode?.trim(),
         product_name: newProduct.product_name?.trim(),
-        category_id: newProduct.category_id ? parseInt(newProduct.category_id) : null,
+        category_id: newProduct.category_id ? parseInt(newProduct.category_id) : 2,
+        special_description: newProduct.special_description?.trim() || '',
         description: newProduct.description || '',
         images: newProduct.images || [],
         original_retail_price: safeNum(newProduct.original_retail_price, 0),
@@ -563,7 +565,6 @@ export default function App() {
 
       if (!payload.barcode) return alert('Barcode number is required.');
       if (!payload.product_name) return alert('Product name is required.');
-      if (!payload.category_id) return alert('Please select a Category. Category is mandatory for IRAQ BID application.');
       if (!payload.buy_now_price) return alert('Buy Now Price is mandatory.');
 
       const res = await axios.post(`${API_ENTERPRISE}/inventory/register`, payload);
@@ -2525,18 +2526,31 @@ export default function App() {
                 />
               </div>
 
-              {/* Mandatory Category Selection for Application Sync */}
+              {/* Special Description / Card Badge Tag */}
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', color: '#38bdf8', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                  Product Category * (Mandatory for IRAQ BID App)
+                <label style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  Special Description / Item Badge Tag (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Special Offer, Brand New, Limited Edition, Hot Deal (Appears on Item Card)"
+                  value={newProduct.special_description || ''}
+                  onChange={e => setNewProduct({ ...newProduct, special_description: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Category Selection (Optional) */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  Product Category (Optional)
                 </label>
                 <select
-                  required
                   value={newProduct.category_id}
                   onChange={e => setNewProduct({ ...newProduct, category_id: e.target.value })}
-                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(56, 189, 248, 0.4)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                 >
-                  <option value="">-- Select Product Category (Required) --</option>
+                  <option value="">-- No Category / General --</option>
                   {categoriesList.map(cat => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name} ({cat.slug || `ID ${cat.id}`})

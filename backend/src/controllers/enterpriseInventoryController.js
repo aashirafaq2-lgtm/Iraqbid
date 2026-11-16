@@ -100,7 +100,8 @@ export const registerProduct = async (req, res) => {
       defect_images = [],
       warehouse_location = 'Main Warehouse Slot A',
       category_id = null,
-      notes = ''
+      notes = '',
+      special_description = ''
     } = req.body;
 
     if (!barcode || !product_name || buy_now_price === undefined || starting_bid_price === undefined || original_retail_price === undefined) {
@@ -140,9 +141,9 @@ export const registerProduct = async (req, res) => {
         barcode, product_name, description, images, original_retail_price,
         starting_bid_price, buy_now_price, min_acceptable_price, actual_acquisition_cost,
         auto_bid_increment, condition, defect_alert, defect_details, defect_images,
-        warehouse_location, receiving_employee_id, notes, status, category_id
+        warehouse_location, receiving_employee_id, notes, status, category_id, special_description
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'available', $18
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'available', $18, $19
       ) RETURNING *;
     `;
 
@@ -164,7 +165,8 @@ export const registerProduct = async (req, res) => {
       warehouse_location || 'Main Warehouse',
       req.user?.id || null,
       notes || '',
-      parsedCategoryId
+      parsedCategoryId,
+      (special_description || '').trim()
     ];
 
     const result = await pool.query(query, values);
@@ -185,11 +187,11 @@ export const registerProduct = async (req, res) => {
         INSERT INTO products (
           title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
           image_url, images, category_id, status, auction_end_time,
-          source_type, condition, defect_alert, defect_details, original_retail_price, product_source
+          source_type, condition, defect_alert, defect_details, original_retail_price, real_price, special_description, product_source
         ) VALUES (
           $1, $2, $3, $3, $3, $3, $4,
           $5, $6, $7, 'approved', $8,
-          'company', $9, $10, $11, $12, 'company'
+          'company', $9, $10, $11, $12, $12, $13, 'company'
         ) RETURNING id;
       `, [
         product_name.trim(),
@@ -203,7 +205,8 @@ export const registerProduct = async (req, res) => {
         condition,
         Boolean(defect_alert),
         defect_details || '',
-        numOriginalPrice
+        numOriginalPrice,
+        (special_description || '').trim()
       ]);
 
       if (productRes.rows.length > 0) {

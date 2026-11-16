@@ -319,7 +319,10 @@ export const MobileProductController = {
           buyer.name as highest_bidder_name,
           EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
           p.product_source,
-          p.real_price
+          COALESCE(p.original_retail_price, p.real_price, 0) as real_price,
+          p.original_retail_price,
+          p.buy_now_price,
+          p.special_description
         FROM products p
         LEFT JOIN users u ON p.seller_id = u.id
         LEFT JOIN categories c ON p.category_id = c.id
@@ -428,13 +431,17 @@ export const MobileProductController = {
           starting_price: Number(p.starting_price || 0),
           starting_bid: Number(p.starting_bid || 0),
           total_bids: parseInt(p.total_bids || 0),
-          real_price: Number(p.real_price || 0),
+          real_price: Number(p.original_retail_price || p.real_price || 0),
+          original_retail_price: Number(p.original_retail_price || p.real_price || 0),
+          buy_now_price: p.buy_now_price,
+          buyNowPrice: p.buy_now_price,
+          special_description: p.special_description || '',
           hours_left: p.hours_left ? parseFloat(Number(p.hours_left).toFixed(2)) : 0,
           images: imagesArray,
 
           // CamelCase aliases
           imageUrl: p.image_url,
-          realPrice: Number(p.real_price || 0),
+          realPrice: Number(p.original_retail_price || p.real_price || 0),
           createdAt: p.created_at,
           productSource: p.product_source,
           auctionEndTime: p.auction_end_time,
@@ -523,12 +530,16 @@ export const MobileProductController = {
         starting_price: Number(fixedProduct.starting_price || 0),
         starting_bid: Number(fixedProduct.starting_bid || 0),
         total_bids: parseInt(fixedProduct.total_bids || 0),
-        real_price: Number(fixedProduct.real_price || 0),
+        real_price: Number(fixedProduct.original_retail_price || fixedProduct.real_price || 0),
+        original_retail_price: Number(fixedProduct.original_retail_price || fixedProduct.real_price || 0),
+        buy_now_price: fixedProduct.buy_now_price,
+        buyNowPrice: fixedProduct.buy_now_price,
+        special_description: fixedProduct.special_description || '',
         hours_left: fixedProduct.hours_left ? parseFloat(Number(fixedProduct.hours_left).toFixed(2)) : 0,
 
         // CamelCase aliases
         imageUrl: fixedProduct.image_url,
-        realPrice: Number(fixedProduct.real_price || 0),
+        realPrice: Number(fixedProduct.original_retail_price || fixedProduct.real_price || 0),
         createdAt: fixedProduct.created_at,
         productSource: fixedProduct.product_source,
         auctionEndTime: fixedProduct.auction_end_time,
@@ -734,6 +745,111 @@ export const MobileProductController = {
       res.status(500).json({
         success: false,
         message: "Internal server error"
+      });
+    }
+  },
+
+  // POST /api/products/:id/buy-now
+  async buyNow(req, res) {
+    try {
+      const { id } = req.params;
+      const buyerId = req.user.id;
+      const { shipping_address, phone, notes } = req.body || {};
+
+      // 1. Get product
+      const productRes = await pool.query(
+        "SELECT * FROM products WHERE id = $1",
+        [id]
+      );
+
+      if (productRes.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found"
+        });
+      }
+
+      const product = productRes.rows[0];
+
+      if (product.status === 'sold') {
+        return res.status(400).json({
+          success: false,
+          message: "This product is already sold"
+        });
+      }
+
+      const buyNowPrice = parseFloat(product.buy_now_price);
+      if (!buyNowPrice || buyNowPrice <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Buy Now is not enabled for this product"
+        });
+      }
+
+      // 2. Generate unique order number
+      const orderNumber = 'ORD-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+      // 3. Create order in orders table
+      const notesCombined = [
+        shipping_address ? `Address: ${shipping_address}` : '',
+        phone ? `Phone: ${phone}` : '',
+        notes ? `Notes: ${notes}` : ''
+      ].filter(Boolean).join(' | ') || 'Direct Buy Now Purchase';
+
+      const orderRes = await pool.query(`
+        INSERT INTO orders (
+          order_number, product_id, buyer_id, amount, final_price, shipping_cost,
+          status, payment_status, delivery_status, shipping_notes, created_at
+        ) VALUES (
+          $1, $2, $3, $4, $4, 0,
+          'pending', 'pending', 'pending', $5, CURRENT_TIMESTAMP
+        ) RETURNING *;
+      `, [
+        orderNumber,
+        product.id,
+        buyerId,
+        buyNowPrice,
+        notesCombined
+      ]);
+
+      // 4. Update product to sold
+      await pool.query(`
+        UPDATE products 
+        SET status = 'sold',
+            auction_status = 'sold',
+            highest_bidder_id = $1,
+            current_bid = $2,
+            current_price = $2,
+            auction_end_time = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `, [buyerId, buyNowPrice, product.id]);
+
+      // 5. Update linked inventory_item if exists
+      await pool.query(
+        "UPDATE inventory_items SET status = 'sold', updated_at = CURRENT_TIMESTAMP WHERE published_product_id = $1",
+        [product.id]
+      );
+
+      // 6. Notify admins
+      notifyAdmins(
+        `🛒 New Buy Now Order #${orderNumber}! Product "${product.title}" purchased for $${buyNowPrice} by Buyer #${buyerId}`
+      );
+
+      return res.json({
+        success: true,
+        message: "Buy Now purchase completed successfully!",
+        data: {
+          order: orderRes.rows[0],
+          orderNumber,
+          buyNowPrice
+        }
+      });
+    } catch (error) {
+      console.error("Buy Now error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process Buy Now purchase"
       });
     }
   }
