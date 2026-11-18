@@ -37,9 +37,16 @@ export const BuyerBiddingHistoryController = {
             WHEN p.auction_end_time <= NOW() AND p.highest_bidder_id != b.user_id THEN 'lost'
             ELSE 'ended'
           END as bid_status,
-          EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left
+          EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
+          o.id as order_id,
+          o.coupon_code,
+          o.discount_amount,
+          o.original_amount,
+          o.final_price,
+          COALESCE(o.delivery_status, o.status, 'pending') as order_status
         FROM bids b
         LEFT JOIN products p ON b.product_id = p.id
+        LEFT JOIN orders o ON o.product_id = p.id AND o.buyer_id = b.user_id
         WHERE b.user_id = $1
       `;
       const params = [userId];
@@ -160,7 +167,11 @@ export const BuyerBiddingHistoryController = {
         ...bid,
         amount: parseFloat(bid.amount) || 0,
         current_highest_bid: bid.current_highest_bid ? parseFloat(bid.current_highest_bid) : null,
-        hours_left: bid.hours_left ? parseFloat(bid.hours_left) : null
+        hours_left: bid.hours_left ? parseFloat(bid.hours_left) : null,
+        original_amount: bid.original_amount ? parseFloat(bid.original_amount) : null,
+        discount_amount: bid.discount_amount ? parseFloat(bid.discount_amount) : 0,
+        final_price: bid.final_price ? parseFloat(bid.final_price) : null,
+        coupon_code: bid.coupon_code || null
       }));
       
       console.log("✅ Data processed:");

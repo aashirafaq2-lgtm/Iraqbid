@@ -6,7 +6,7 @@ import {
   Plus, Search, RefreshCw, AlertTriangle, CheckCircle, XCircle,
   DollarSign, Download, ArrowUpRight, LogOut, ChevronRight, Menu, X,
   FileSpreadsheet, FileText, Check, Layers, ScanLine, Eye, Ban, UserCheck, TrendingUp, Lock, UserPlus, Key,
-  Upload, Image as ImageIcon, Camera, Trash2, ExternalLink, Bot, Sliders, ChevronDown
+  Upload, Image as ImageIcon, Camera, Trash2, ExternalLink, Bot, Sliders, ChevronDown, Tag, Percent, Award, Calendar, Edit2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -16,6 +16,7 @@ import { jsPDF } from 'jspdf';
 const API_ENTERPRISE = '/api/enterprise';
 const API_ADMIN = '/api/admin';
 const API_UPLOADS = '/api/uploads';
+const API_COUPONS = '/api/coupons';
 
 export default function App() {
   // --- AUTHENTICATION & RBAC STATE ---
@@ -432,6 +433,125 @@ export default function App() {
     }
   };
 
+  // --- INFLUENCER COUPONS MANAGEMENT STATE ---
+  const [couponsList, setCouponsList] = useState([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [couponTransactions, setCouponTransactions] = useState([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [influencerPerformance, setInfluencerPerformance] = useState([]);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [couponSubTab, setCouponSubTab] = useState('list'); // 'list' | 'performance' | 'transactions'
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState(null);
+  const [couponFormData, setCouponFormData] = useState({
+    influencer_name: '',
+    coupon_code: '',
+    discount_percentage: 10,
+    max_discount_amount: '',
+    expiry_date: '',
+    is_active: true
+  });
+  const [couponSearch, setCouponSearch] = useState('');
+  const [perfSortBy, setPerfSortBy] = useState('total_uses');
+  const [perfStartDate, setPerfStartDate] = useState('');
+  const [perfEndDate, setPerfEndDate] = useState('');
+
+  const fetchCoupons = async () => {
+    setCouponsLoading(true);
+    try {
+      const res = await axios.get(`${API_COUPONS}/admin`);
+      if (res.data.success) {
+        setCouponsList(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Coupons fetch error:', err);
+    } finally {
+      setCouponsLoading(false);
+    }
+  };
+
+  const fetchCouponTransactions = async () => {
+    setTransactionsLoading(true);
+    try {
+      const res = await axios.get(`${API_COUPONS}/admin/transactions`);
+      if (res.data.success) {
+        setCouponTransactions(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Coupon transactions fetch error:', err);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  const fetchInfluencerPerformance = async () => {
+    setPerformanceLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (perfSortBy) params.append('sort_by', perfSortBy);
+      if (perfStartDate) params.append('start_date', perfStartDate);
+      if (perfEndDate) params.append('end_date', perfEndDate);
+      const res = await axios.get(`${API_COUPONS}/admin/performance?${params.toString()}`);
+      if (res.data.success) {
+        setInfluencerPerformance(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Performance fetch error:', err);
+    } finally {
+      setPerformanceLoading(false);
+    }
+  };
+
+  const handleSaveCoupon = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingCoupon) {
+        const res = await axios.put(`${API_COUPONS}/admin/${editingCoupon.id}`, couponFormData);
+        if (res.data.success) {
+          alert('Coupon updated successfully!');
+          setShowCouponModal(false);
+          setEditingCoupon(null);
+          fetchCoupons();
+        }
+      } else {
+        const res = await axios.post(`${API_COUPONS}/admin`, couponFormData);
+        if (res.data.success) {
+          alert('Influencer coupon created successfully!');
+          setShowCouponModal(false);
+          fetchCoupons();
+        }
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleDeleteCoupon = async (id, code) => {
+    if (!window.confirm(`Are you sure you want to permanently delete coupon ${code}?`)) return;
+    try {
+      const res = await axios.delete(`${API_COUPONS}/admin/${id}`);
+      if (res.data.success) {
+        fetchCoupons();
+        fetchCouponTransactions();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleToggleCouponStatus = async (item) => {
+    try {
+      const res = await axios.put(`${API_COUPONS}/admin/${item.id}`, {
+        is_active: !item.is_active
+      });
+      if (res.data.success) {
+        fetchCoupons();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
   // Initial Fetching
   useEffect(() => {
     if (authToken) {
@@ -450,6 +570,7 @@ export default function App() {
       fetchReferrals();
       fetchLogs();
       fetchBanners();
+      fetchCoupons();
     }
   }, [authToken]);
 
@@ -1169,9 +1290,10 @@ export default function App() {
             ...(canAccessOps ? [{ id: 'audit', label: '9. Stock Audit', icon: <ClipboardCheck size={18} /> }] : []),
             ...(canAccessStaff ? [{ id: 'staff', label: '10. Employees & Permissions', icon: <Key size={18} /> }] : []),
             ...(canAccessCRM ? [{ id: 'reports', label: '11. Reports Hub', icon: <FileSpreadsheet size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'logs', label: '12. Activity Log', icon: <History size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'banners', label: '13. Mobile Slideshow & Banners', icon: <ImageIcon size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'settings', label: '14. System Settings', icon: <Settings size={18} /> }] : [])
+            ...(canAccessCRM ? [{ id: 'coupons', label: '12. Coupons Management', icon: <Tag size={18} /> }] : []),
+            ...(canAccessCRM ? [{ id: 'logs', label: '13. Activity Log', icon: <History size={18} /> }] : []),
+            ...(canAccessCRM ? [{ id: 'banners', label: '14. Mobile Slideshow & Banners', icon: <ImageIcon size={18} /> }] : []),
+            ...(canAccessCRM ? [{ id: 'settings', label: '15. System Settings', icon: <Settings size={18} /> }] : [])
           ].map(item => (
             <button
               key={item.id}
@@ -2507,6 +2629,416 @@ export default function App() {
         {/* =====================================================================
             MODULE 14: SYSTEM SETTINGS (1 USD = 1,520 IQD & AUTO-BIDDER BOT)
            ===================================================================== */}
+        {/* =====================================================================
+            TAB 12: INFLUENCER COUPONS MANAGEMENT
+           ===================================================================== */}
+        {activeTab === 'coupons' && canAccessCRM && (
+          <div style={{ padding: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Tag size={24} color="#38bdf8" /> Influencer Coupons Management
+                </h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>
+                  Create and manage unique promotional discount coupons for influencers to share with their followers.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    fetchCoupons();
+                    fetchCouponTransactions();
+                    fetchInfluencerPerformance();
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', padding: '10px 16px', borderRadius: '10px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}
+                >
+                  <RefreshCw size={14} className={couponsLoading ? 'animate-spin' : ''} /> Refresh
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingCoupon(null);
+                    setCouponFormData({
+                      influencer_name: '',
+                      coupon_code: '',
+                      discount_percentage: 10,
+                      max_discount_amount: '',
+                      expiry_date: '',
+                      is_active: true
+                    });
+                    setShowCouponModal(true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '10px', fontSize: '13px', cursor: 'pointer', fontWeight: '700', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)' }}
+                >
+                  <Plus size={16} /> Create Influencer Coupon
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tabs header */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '24px' }}>
+              {[
+                { id: 'list', label: '1. All Coupons & Stats', icon: <Tag size={15} /> },
+                { id: 'performance', label: '2. Influencer Performance Leaderboard', icon: <Award size={15} /> },
+                { id: 'transactions', label: '3. Coupon Transaction History', icon: <ShoppingBag size={15} /> }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => {
+                    setCouponSubTab(sub.id);
+                    if (sub.id === 'performance') fetchInfluencerPerformance();
+                    if (sub.id === 'transactions') fetchCouponTransactions();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 18px',
+                    border: 'none',
+                    background: 'transparent',
+                    borderBottom: couponSubTab === sub.id ? '2px solid #38bdf8' : '2px solid transparent',
+                    color: couponSubTab === sub.id ? '#38bdf8' : '#64748b',
+                    fontWeight: couponSubTab === sub.id ? '700' : '500',
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {sub.icon} {sub.label}
+                </button>
+              ))}
+            </div>
+
+            {/* SUBTAB 1: COUPONS LIST */}
+            {couponSubTab === 'list' && (
+              <div>
+                {/* Search Bar */}
+                <div style={{ marginBottom: '20px', maxWidth: '360px', position: 'relative' }}>
+                  <Search size={16} color="#64748b" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by influencer or coupon code..."
+                    value={couponSearch}
+                    onChange={e => setCouponSearch(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px 10px 38px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <th style={{ padding: '16px 20px' }}>Influencer</th>
+                        <th style={{ padding: '16px 20px' }}>Coupon Code</th>
+                        <th style={{ padding: '16px 20px' }}>Discount</th>
+                        <th style={{ padding: '16px 20px' }}>Max Cap</th>
+                        <th style={{ padding: '16px 20px' }}>Times Used</th>
+                        <th style={{ padding: '16px 20px' }}>Unique Customers</th>
+                        <th style={{ padding: '16px 20px' }}>Original Sales</th>
+                        <th style={{ padding: '16px 20px' }}>Discounts Given</th>
+                        <th style={{ padding: '16px 20px' }}>Final Net Sales</th>
+                        <th style={{ padding: '16px 20px' }}>Expiry</th>
+                        <th style={{ padding: '16px 20px' }}>Status</th>
+                        <th style={{ padding: '16px 20px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {couponsList.filter(c => 
+                        !couponSearch || 
+                        c.influencer_name.toLowerCase().includes(couponSearch.toLowerCase()) || 
+                        c.coupon_code.toLowerCase().includes(couponSearch.toLowerCase())
+                      ).length === 0 ? (
+                        <tr>
+                          <td colSpan="12" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                            {couponsLoading ? 'Loading coupons...' : 'No influencer coupons created yet. Click "Create Influencer Coupon" above!'}
+                          </td>
+                        </tr>
+                      ) : (
+                        couponsList.filter(c => 
+                          !couponSearch || 
+                          c.influencer_name.toLowerCase().includes(couponSearch.toLowerCase()) || 
+                          c.coupon_code.toLowerCase().includes(couponSearch.toLowerCase())
+                        ).map((c, idx) => (
+                          <tr key={c.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '14px 20px', fontWeight: '700', color: '#f8fafc' }}>
+                              {c.influencer_name}
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <span style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '4px 10px', borderRadius: '6px', fontWeight: '800', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+                                {c.coupon_code}
+                              </span>
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '700' }}>
+                              {c.discount_percentage}% OFF
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8' }}>
+                              {c.max_discount_amount ? `$${parseFloat(c.max_discount_amount).toFixed(2)}` : 'None'}
+                            </td>
+                            <td style={{ padding: '14px 20px', fontWeight: '800', color: '#38bdf8' }}>
+                              {c.total_uses || 0}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#cbd5e1' }}>
+                              {c.unique_customers || 0}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8' }}>
+                              ${parseFloat(c.total_original_sales || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#f43f5e', fontWeight: '700' }}>
+                              -${parseFloat(c.total_discounts_given || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '800' }}>
+                              ${parseFloat(c.total_final_sales || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8', fontSize: '12px' }}>
+                              {c.expiry_date ? new Date(c.expiry_date).toLocaleDateString() : 'Lifetime'}
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <button
+                                onClick={() => handleToggleCouponStatus(c)}
+                                style={{
+                                  backgroundColor: c.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                  color: c.is_active ? '#34d399' : '#f87171',
+                                  border: c.is_active ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {c.is_active ? 'Active' : 'Inactive'}
+                              </button>
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  onClick={() => {
+                                    setEditingCoupon(c);
+                                    setCouponFormData({
+                                      influencer_name: c.influencer_name,
+                                      coupon_code: c.coupon_code,
+                                      discount_percentage: c.discount_percentage,
+                                      max_discount_amount: c.max_discount_amount || '',
+                                      expiry_date: c.expiry_date ? c.expiry_date.split('T')[0] : '',
+                                      is_active: c.is_active
+                                    });
+                                    setShowCouponModal(true);
+                                  }}
+                                  style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: '#38bdf8', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                                  title="Edit Coupon"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteCoupon(c.id, c.coupon_code)}
+                                  style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#f87171', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                                  title="Delete Coupon"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2: INFLUENCER PERFORMANCE LEADERBOARD */}
+            {couponSubTab === 'performance' && (
+              <div>
+                {/* Filters */}
+                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Sort Influencers By</label>
+                    <select
+                      value={perfSortBy}
+                      onChange={e => {
+                        setPerfSortBy(e.target.value);
+                        setTimeout(fetchInfluencerPerformance, 50);
+                      }}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px' }}
+                    >
+                      <option value="total_uses">Total Coupon Uses (Highest First)</option>
+                      <option value="total_sales">Total Sales Volume Generated</option>
+                      <option value="total_discount">Total Discount Budget Given</option>
+                      <option value="name">Influencer Name (A-Z)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Date From</label>
+                    <input
+                      type="date"
+                      value={perfStartDate}
+                      onChange={e => setPerfStartDate(e.target.value)}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Date To</label>
+                    <input
+                      type="date"
+                      value={perfEndDate}
+                      onChange={e => setPerfEndDate(e.target.value)}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 12px', color: '#fff', fontSize: '12px' }}
+                    />
+                  </div>
+                  <button
+                    onClick={fetchInfluencerPerformance}
+                    style={{ alignSelf: 'flex-end', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    Filter Leaderboard
+                  </button>
+                </div>
+
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '16px 20px' }}>Rank</th>
+                        <th style={{ padding: '16px 20px' }}>Influencer Name</th>
+                        <th style={{ padding: '16px 20px' }}>Coupon Code</th>
+                        <th style={{ padding: '16px 20px' }}>Discount %</th>
+                        <th style={{ padding: '16px 20px' }}>Total Coupon Uses</th>
+                        <th style={{ padding: '16px 20px' }}>Total Sales Before Discount</th>
+                        <th style={{ padding: '16px 20px' }}>Total Discounts Given</th>
+                        <th style={{ padding: '16px 20px' }}>Total Net Sales After Discount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {influencerPerformance.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                            {performanceLoading ? 'Calculating leaderboard...' : 'No performance data found for selected period.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        influencerPerformance.map((inf, idx) => (
+                          <tr key={inf.coupon_id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '14px 20px', fontWeight: '800', color: idx === 0 ? '#eab308' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#64748b' }}>
+                              #{idx + 1}
+                            </td>
+                            <td style={{ padding: '14px 20px', fontWeight: '700', color: '#f8fafc' }}>
+                              {inf.influencer_name}
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <span style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '3px 8px', borderRadius: '5px', fontWeight: '700', fontFamily: 'monospace' }}>
+                                {inf.coupon_code}
+                              </span>
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '700' }}>
+                              {inf.discount_percentage}%
+                            </td>
+                            <td style={{ padding: '14px 20px', fontWeight: '800', color: '#38bdf8' }}>
+                              {inf.total_uses} orders
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8' }}>
+                              ${parseFloat(inf.total_sales_before_discount || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#f43f5e', fontWeight: '700' }}>
+                              -${parseFloat(inf.total_discounts_given || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '800' }}>
+                              ${parseFloat(inf.total_sales_after_discount || 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 3: COUPON TRANSACTION HISTORY */}
+            {couponSubTab === 'transactions' && (
+              <div>
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '16px 20px' }}>Influencer</th>
+                        <th style={{ padding: '16px 20px' }}>Coupon Code</th>
+                        <th style={{ padding: '16px 20px' }}>Customer Name</th>
+                        <th style={{ padding: '16px 20px' }}>Product</th>
+                        <th style={{ padding: '16px 20px' }}>Winning Bid (Original)</th>
+                        <th style={{ padding: '16px 20px' }}>Discount %</th>
+                        <th style={{ padding: '16px 20px' }}>Discount Amount</th>
+                        <th style={{ padding: '16px 20px' }}>Final Paid Amount</th>
+                        <th style={{ padding: '16px 20px' }}>Order Date</th>
+                        <th style={{ padding: '16px 20px' }}>Order Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {couponTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                            {transactionsLoading ? 'Loading transaction history...' : 'No coupon orders recorded yet.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        couponTransactions.map((tx, idx) => (
+                          <tr key={tx.id || idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '14px 20px', fontWeight: '700', color: '#f8fafc' }}>
+                              {tx.influencer_name}
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <span style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '3px 8px', borderRadius: '5px', fontWeight: '700', fontFamily: 'monospace' }}>
+                                {tx.coupon_code}
+                              </span>
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#cbd5e1' }}>
+                              {tx.customer_name || 'Customer'}
+                              {tx.customer_phone && <div style={{ fontSize: '11px', color: '#64748b' }}>{tx.customer_phone}</div>}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#e2e8f0', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {tx.product_name || 'Won Auction Item'}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8' }}>
+                              ${parseFloat(tx.original_amount).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '700' }}>
+                              {tx.discount_percentage}%
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#f43f5e', fontWeight: '700' }}>
+                              -${parseFloat(tx.discount_amount).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#10b981', fontWeight: '800' }}>
+                              ${parseFloat(tx.final_amount).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 20px', color: '#94a3b8', fontSize: '12px' }}>
+                              {new Date(tx.created_at).toLocaleDateString()}
+                            </td>
+                            <td style={{ padding: '14px 20px' }}>
+                              <span style={{
+                                backgroundColor: tx.order_status === 'delivered' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                color: tx.order_status === 'delivered' ? '#34d399' : '#fbbf24',
+                                border: tx.order_status === 'delivered' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '3px 8px',
+                                borderRadius: '5px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textTransform: 'capitalize'
+                              }}>
+                                {tx.order_status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =====================================================================
+            TAB 15: SYSTEM SETTINGS
+           ===================================================================== */}
         {activeTab === 'settings' && canAccessCRM && (
           <div style={{ padding: '32px' }}>
             <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '8px' }}>System Settings & Operational Configurations</h2>
@@ -3201,6 +3733,131 @@ export default function App() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: CREATE / EDIT INFLUENCER COUPON
+         ===================================================================== */}
+      {showCouponModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '520px', borderRadius: '20px', padding: '28px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 25px 60px rgba(0,0,0,0.7)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Tag size={20} color="#38bdf8" /> {editingCoupon ? 'Edit Influencer Coupon' : 'Create Influencer Coupon'}
+              </h3>
+              <button onClick={() => setShowCouponModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={22} /></button>
+            </div>
+
+            <form onSubmit={handleSaveCoupon}>
+              {/* Influencer Name */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  Influencer Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ahmed, Noor, Ali, Sara"
+                  value={couponFormData.influencer_name}
+                  onChange={e => setCouponFormData({ ...couponFormData, influencer_name: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Coupon Code */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  Unique Coupon Code * (uppercase)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. AHMED10, NOOR10, ALI15"
+                  value={couponFormData.coupon_code}
+                  onChange={e => setCouponFormData({ ...couponFormData, coupon_code: e.target.value.toUpperCase() })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#c084fc', fontFamily: 'monospace', fontWeight: '700', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Discount Percentage & Max Cap */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                    Discount Percentage (%) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="100"
+                    required
+                    placeholder="e.g. 10"
+                    value={couponFormData.discount_percentage}
+                    onChange={e => setCouponFormData({ ...couponFormData, discount_percentage: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                    Max Discount ($ Optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 50.00"
+                    value={couponFormData.max_discount_amount}
+                    onChange={e => setCouponFormData({ ...couponFormData, max_discount_amount: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* Expiry Date */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  Coupon Expiry Date (Optional - Leave blank for lifetime)
+                </label>
+                <input
+                  type="date"
+                  value={couponFormData.expiry_date}
+                  onChange={e => setCouponFormData({ ...couponFormData, expiry_date: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Status Switch */}
+              <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="checkbox"
+                  id="coupon_is_active"
+                  checked={couponFormData.is_active}
+                  onChange={e => setCouponFormData({ ...couponFormData, is_active: e.target.checked })}
+                  style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
+                />
+                <label htmlFor="coupon_is_active" style={{ fontSize: '13px', color: '#cbd5e1', cursor: 'pointer', fontWeight: '600' }}>
+                  Coupon is Active & Usable by Followers
+                </label>
+              </div>
+
+              {/* Modal Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCouponModal(false)}
+                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)' }}
+                >
+                  {editingCoupon ? 'Update Coupon' : 'Create Coupon'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

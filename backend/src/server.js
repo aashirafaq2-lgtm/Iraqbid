@@ -21,6 +21,8 @@ import buyerBiddingHistoryRoutes from "./Routes/buyerBiddingHistoryRoutes.js";
 import sellerEarningsRoutes from "./Routes/sellerEarningsRoutes.js";
 import reportRoutes from "./Routes/reportRoutes.js";
 import enterpriseRoutes from "./Routes/enterpriseRoutes.js";
+import couponRoutes from "./Routes/couponRoutes.js";
+import { initCouponTables } from "./controllers/couponController.js";
 import { runAutoBidderCycle } from "./controllers/enterpriseOperationsController.js";
 import cors from "cors";
 import pool from "./config/db.js";
@@ -153,6 +155,7 @@ app.use("/api/seller/earnings", sellerEarningsRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/enterprise", enterpriseRoutes); // ✅ Iraq Bid Enterprise Admin Panel API
+app.use("/api/coupons", couponRoutes); // ✅ Influencer Coupons Management API
 
 // Health check routes
 app.get("/", (req, res) => res.send("BidMaster Admin API running ✅"));
@@ -295,4 +298,5 @@ io.on("connection", (socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server with Socket.io running on port ${PORT}`);
+  initCouponTables();
 });

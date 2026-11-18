@@ -758,7 +758,7 @@ export const MobileProductController = {
     try {
       const { id } = req.params;
       const buyerId = req.user.id;
-      const { shipping_address, phone, notes } = req.body || {};
+      const { shipping_address, phone, notes, coupon_code } = req.body || {};
 
       // 1. Get product and buyer details
       const buyerRes = await pool.query("SELECT name, phone FROM users WHERE id = $1", [buyerId]);
@@ -793,6 +793,32 @@ export const MobileProductController = {
         });
       }
 
+      // Check and apply coupon if provided
+      let finalPrice = buyNowPrice;
+      let appliedCoupon = null;
+      let discountAmount = 0.0;
+
+      if (coupon_code && coupon_code.trim().isNotEmpty) {
+        const cleanCode = coupon_code.trim().toUpperCase();
+        const cRes = await pool.query(
+          "SELECT * FROM coupons WHERE UPPER(coupon_code) = $1 AND is_active = true",
+          [cleanCode]
+        );
+        if (cRes.rows.length > 0) {
+          const coupon = cRes.rows[0];
+          if (!coupon.expiry_date || new Date(coupon.expiry_date) >= new Date()) {
+            appliedCoupon = coupon;
+            const discPercent = parseFloat(coupon.discount_percentage);
+            discountAmount = parseFloat(((buyNowPrice * discPercent) / 100).toFixed(2));
+            if (coupon.max_discount_amount && parseFloat(coupon.max_discount_amount) > 0) {
+              const maxDisc = parseFloat(coupon.max_discount_amount);
+              if (discountAmount > maxDisc) discountAmount = maxDisc;
+            }
+            finalPrice = parseFloat((buyNowPrice - discountAmount).toFixed(2));
+          }
+        }
+      }
+
       // 2. Generate unique order number
       const orderNumber = 'ORD-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
 
@@ -803,6 +829,7 @@ export const MobileProductController = {
       // 3. Create order in orders table
       const finalPhone = phone || buyerUser.phone || '';
       const notesCombined = [
+        appliedCoupon ? `Coupon: ${appliedCoupon.coupon_code} (-$${discountAmount})` : '',
         shipping_address ? `Address: ${shipping_address}` : '',
         finalPhone ? `Phone: ${finalPhone}` : '',
         buyerUser.name ? `Buyer: ${buyerUser.name}` : '',
@@ -811,20 +838,46 @@ export const MobileProductController = {
 
       const orderRes = await pool.query(`
         INSERT INTO orders (
-          order_number, product_id, buyer_id, amount, final_price, shipping_cost,
+          order_number, product_id, buyer_id, amount, final_price, original_amount,
+          discount_amount, coupon_code, shipping_cost,
           status, payment_status, delivery_status, shipping_notes, inventory_item_id, created_at
         ) VALUES (
-          $1, $2, $3, $4, $4, 0,
-          'pending', 'pending', 'pending', $5, $6, CURRENT_TIMESTAMP
+          $1, $2, $3, $4, $4, $5,
+          $6, $7, 0,
+          'pending', 'pending', 'pending', $8, $9, CURRENT_TIMESTAMP
         ) RETURNING *;
       `, [
         orderNumber,
         product.id,
         buyerId,
+        finalPrice,
         buyNowPrice,
+        discountAmount,
+        appliedCoupon ? appliedCoupon.coupon_code : null,
         `⚡ BUY NOW: ${notesCombined}`,
         inventoryItemId
       ]);
+
+      // Record coupon redemption if coupon was applied
+      if (appliedCoupon) {
+        await pool.query(`
+          INSERT INTO coupon_redemptions (
+            coupon_id, coupon_code, influencer_name, user_id, order_id, product_id,
+            original_amount, discount_percentage, discount_amount, final_amount, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+        `, [
+          appliedCoupon.id,
+          appliedCoupon.coupon_code,
+          appliedCoupon.influencer_name,
+          buyerId,
+          orderRes.rows[0].id,
+          product.id,
+          buyNowPrice,
+          appliedCoupon.discount_percentage,
+          discountAmount,
+          finalPrice
+        ]);
+      }
 
       // 4. Update product to sold
       await pool.query(`
