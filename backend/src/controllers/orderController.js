@@ -21,7 +21,7 @@ export const OrderController = {
         LEFT JOIN products p ON o.product_id = p.id
         LEFT JOIN inventory_items inv ON o.inventory_item_id = inv.id OR inv.published_product_id = p.id
         LEFT JOIN users buyer ON o.buyer_id = buyer.id
-        LEFT JOIN users seller ON o.seller_id = seller.id
+        LEFT JOIN users seller ON p.seller_id = seller.id
         WHERE 1=1
       `;
       const params = [];

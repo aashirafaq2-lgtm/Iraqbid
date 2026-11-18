@@ -124,6 +124,7 @@ export default function App() {
   const [toBarcodeNum, setToBarcodeNum] = useState('');
   const [rangeLoading, setRangeLoading] = useState(false);
   const [selectedBarcodeIds, setSelectedBarcodeIds] = useState(new Set());
+  const [activePrintBarcodes, setActivePrintBarcodes] = useState([]); // Barcodes array directly passed to Print Modal
   const [showBarcodePrintModal, setShowBarcodePrintModal] = useState(false);
   const [labelsPerPage, setLabelsPerPage] = useState(24); // 24, 30, or custom
   const [stickerPaperSize, setStickerPaperSize] = useState('A4'); // 'A4' or 'Thermal'
@@ -658,8 +659,8 @@ export default function App() {
     }
   };
 
-  // --- CUSTOM BARCODE RANGE GENERATION (FROM ... TO ...) ---
-  const handleGenerateBarcodeRange = async (e) => {
+  // --- CUSTOM BARCODE RANGE GENERATION & PRINTING ---
+  const handleGenerateBarcodeRange = async (e, shouldDirectPrint = true) => {
     e?.preventDefault();
     const fromNum = parseInt(fromBarcodeNum);
     const toNum = parseInt(toBarcodeNum);
@@ -681,12 +682,28 @@ export default function App() {
         to_number: toNum
       });
       if (res.data.success) {
-        alert(res.data.message || 'Barcode range processed successfully!');
+        // Build the complete guaranteed array of barcodes in this entire range (both existing and newly created)
+        const fullRangeList = [];
+        for (let i = fromNum; i <= toNum; i++) {
+          fullRangeList.push({
+            barcode_number: `IQB-${String(i).padStart(6, '0')}`,
+            product_name: 'Inventory Asset'
+          });
+        }
+
         fetchBarcodes();
-        // Auto select newly generated barcodes if any
-        if (res.data.barcodes && res.data.barcodes.length > 0) {
-          const newCodes = new Set(res.data.barcodes);
-          setSelectedBarcodeIds(prev => new Set([...prev, ...newCodes]));
+        
+        // Select all barcodes in the range for UI checkmark
+        const rangeSet = new Set(fullRangeList.map(b => b.barcode_number));
+        setSelectedBarcodeIds(rangeSet);
+
+        // Populate active print barcodes so ALL items from 'from' to 'to' are immediately printable
+        setActivePrintBarcodes(fullRangeList);
+
+        if (shouldDirectPrint) {
+          setShowBarcodePrintModal(true);
+        } else {
+          alert(res.data.message || `Range ${fullRangeList.length} barcodes processed successfully!`);
         }
       }
     } catch (err) {
@@ -716,7 +733,14 @@ export default function App() {
 
   // Download Print-Ready PDF
   const handleDownloadBarcodePDF = () => {
-    const selectedList = barcodes.filter(b => selectedBarcodeIds.has(b.barcode_number));
+    let selectedList = activePrintBarcodes.length > 0
+      ? activePrintBarcodes
+      : barcodes.filter(b => selectedBarcodeIds.has(b.barcode_number));
+
+    if (selectedList.length === 0 && selectedBarcodeIds.size > 0) {
+      selectedList = Array.from(selectedBarcodeIds).map(c => ({ barcode_number: c, product_name: 'Inventory Asset' }));
+    }
+
     if (selectedList.length === 0) {
       return alert("Please select at least one barcode to print.");
     }
@@ -1602,13 +1626,22 @@ export default function App() {
                       Range: IQB-{String(fromBarcodeNum).padStart(6, '0')} to IQB-{String(toBarcodeNum).padStart(6, '0')} ({parseInt(toBarcodeNum) - parseInt(fromBarcodeNum) + 1} barcodes)
                     </div>
                   )}
-                  <button
-                    type="submit"
-                    disabled={rangeLoading}
-                    style={{ width: '100%', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '11px 16px', borderRadius: '8px', cursor: rangeLoading ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    {rangeLoading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-                    {rangeLoading ? 'Generating Range...' : 'Generate Range Barcodes'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                    <button
+                      type="submit"
+                      disabled={rangeLoading}
+                      style={{ flex: 1, backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '11px 16px', borderRadius: '8px', cursor: rangeLoading ? 'not-allowed' : 'pointer', fontWeight: '800', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.4)' }}>
+                      {rangeLoading ? <RefreshCw size={14} className="animate-spin" /> : <Printer size={15} />}
+                      {rangeLoading ? 'Processing...' : 'Generate & Print Range'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleGenerateBarcodeRange(e, false)}
+                      disabled={rangeLoading}
+                      style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.15)', color: '#94a3b8', padding: '11px 14px', borderRadius: '8px', cursor: rangeLoading ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '12px' }}>
+                      Generate Only
+                    </button>
+                  </div>
                 </form>
               </div>
 
@@ -1690,6 +1723,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (selectedBarcodeIds.size === 0) return alert("Please select at least one barcode to print.");
+                    setActivePrintBarcodes([]); // Reset explicit range so it prints all user selected checkmarked barcodes
                     setShowBarcodePrintModal(true);
                   }}
                   disabled={selectedBarcodeIds.size === 0}
@@ -3047,7 +3081,9 @@ export default function App() {
               <div>
                 <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#f8fafc' }}>Barcode Labels Printing & PDF Generator</h3>
                 <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                  Total Selected: <strong style={{ color: '#38bdf8' }}>{selectedBarcodeIds.size} barcodes</strong> • Code 128 Standard • IRAQ BID Brand Header
+                  Total Selected: <strong style={{ color: '#38bdf8' }}>
+                    {activePrintBarcodes.length > 0 ? activePrintBarcodes.length : selectedBarcodeIds.size} barcodes
+                  </strong> • Code 128 Standard • IRAQ BID Brand Header
                 </div>
               </div>
               <button onClick={() => setShowBarcodePrintModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={22} /></button>
@@ -3103,7 +3139,10 @@ export default function App() {
                 gridTemplateColumns: stickerPaperSize === 'A4' ? 'repeat(3, 1fr)' : '1fr',
                 gap: '12px'
               }}>
-                {barcodes.filter(b => selectedBarcodeIds.has(b.barcode_number)).map((item, idx) => (
+                {(activePrintBarcodes.length > 0
+                  ? activePrintBarcodes
+                  : barcodes.filter(b => selectedBarcodeIds.has(b.barcode_number))
+                ).map((item, idx) => (
                   <div
                     key={idx}
                     style={{

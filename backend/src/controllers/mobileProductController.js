@@ -322,8 +322,10 @@ export const MobileProductController = {
           COALESCE(p.original_retail_price, p.real_price, 0) as real_price,
           p.original_retail_price,
           p.buy_now_price,
-          p.special_description
+          p.special_description,
+          COALESCE(inv.barcode, CONCAT('IQB-', LPAD(p.id::text, 6, '0'))) as barcode
         FROM products p
+        LEFT JOIN inventory_items inv ON inv.published_product_id = p.id
         LEFT JOIN users u ON p.seller_id = u.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users buyer ON p.highest_bidder_id = buyer.id
@@ -494,6 +496,7 @@ export const MobileProductController = {
       const result = await pool.query(
         `SELECT 
           p.*,
+          COALESCE(inv.barcode, CONCAT('IQB-', LPAD(p.id::text, 6, '0'))) as barcode,
           u.name as seller_name,
           u.is_verified as seller_is_verified,
           c.name as category_name,
@@ -504,6 +507,7 @@ export const MobileProductController = {
             ELSE 'ended'
           END as auction_status
         FROM products p
+        LEFT JOIN inventory_items inv ON inv.published_product_id = p.id
         LEFT JOIN users u ON p.seller_id = u.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users buyer ON p.highest_bidder_id = buyer.id
@@ -756,7 +760,10 @@ export const MobileProductController = {
       const buyerId = req.user.id;
       const { shipping_address, phone, notes } = req.body || {};
 
-      // 1. Get product
+      // 1. Get product and buyer details
+      const buyerRes = await pool.query("SELECT name, phone FROM users WHERE id = $1", [buyerId]);
+      const buyerUser = buyerRes.rows[0] || {};
+
       const productRes = await pool.query(
         "SELECT * FROM products WHERE id = $1",
         [id]
@@ -794,9 +801,11 @@ export const MobileProductController = {
       const inventoryItemId = invRes.rows[0]?.id || null;
 
       // 3. Create order in orders table
+      const finalPhone = phone || buyerUser.phone || '';
       const notesCombined = [
         shipping_address ? `Address: ${shipping_address}` : '',
-        phone ? `Phone: ${phone}` : '',
+        finalPhone ? `Phone: ${finalPhone}` : '',
+        buyerUser.name ? `Buyer: ${buyerUser.name}` : '',
         notes ? `Notes: ${notes}` : ''
       ].filter(Boolean).join(' | ') || 'Direct Buy Now Purchase';
 

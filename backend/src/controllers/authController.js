@@ -648,12 +648,28 @@ export const AuthController = {
   async sendOTP(req, res) {
     console.log("📡 [OTP] Send OTP request received");
     try {
-      const { phone } = req.body;
+      const { phone, type } = req.body;
       const normalizedPhone = normalizeIraqPhone(phone);
+
+      if (!normalizedPhone) {
+        return res.status(400).json({ success: false, message: "Invalid phone number format" });
+      }
 
       // MAGIC NUMBERS FOR APP STORE REVIEW
       const magicNumbers = ['+9647500000000', '+964750000000', '+1234567890', '+964700000000', '+9644700000000', '+964000000000', '+1111111111', '750000000'];
       const isMagic = magicNumbers.includes(normalizedPhone) || magicNumbers.includes(phone);
+
+      // REQUIREMENT: Check if user exists when attempting to login
+      if (type === 'login' && !isMagic) {
+        const userCheck = await pool.query("SELECT id FROM users WHERE phone = $1", [normalizedPhone]);
+        if (userCheck.rows.length === 0) {
+          return res.status(404).json({
+            success: false,
+            code: "USER_NOT_FOUND",
+            message: "You don't have an account yet. Please create an account to continue."
+          });
+        }
+      }
 
       const otpCode = isMagic ? '123456' : Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins for review comfort
@@ -748,9 +764,18 @@ export const AuthController = {
       // Fetch user for token generation
       const userResult = await pool.query("SELECT * FROM users WHERE phone = $1", [normalizedPhone]);
 
-      // If user doesn't exist yet, auto-create account on OTP verification
+      // If user doesn't exist: check if this was a registration attempt or forbidden login
       if (userResult.rows.length === 0) {
         const userType = req.body?.type;
+        // Do NOT auto-create account if it was a login attempt
+        if (userType === 'login') {
+          return res.status(404).json({
+            success: false,
+            code: "USER_NOT_FOUND",
+            message: "You don't have an account yet. Please create an account to continue."
+          });
+        }
+
         const defaultRole = (userType === 'seller') ? 'seller_products' : 'company_products';
         const rawDigits = normalizedPhone.replace(/\D/g, '');
         const autoEmail = `user${rawDigits}@iraqbid.net`;
@@ -759,7 +784,7 @@ export const AuthController = {
           [`User ${normalizedPhone.slice(-4)}`, autoEmail, normalizedPhone, defaultRole]
         );
         userResult.rows[0] = newUser.rows[0];
-        console.log(`✨ [AUTO-REGISTER] User account auto-created on verification for ${normalizedPhone}`);
+        console.log(`✨ [REGISTRATION] User account created on verification for ${normalizedPhone}`);
       }
 
       const user = userResult.rows[0];

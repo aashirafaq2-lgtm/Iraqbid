@@ -421,8 +421,9 @@ export const generateBarcodeRange = async (req, res) => {
         success: true,
         count: 0,
         skipped_count: skippedCount,
-        message: `All ${candidateCodes.length} barcodes in range IQB-${String(fromNum).padStart(6, '0')} to IQB-${String(toNum).padStart(6, '0')} already exist. Skipped.`,
-        barcodes: []
+        all_range_barcodes: candidateCodes,
+        barcodes: candidateCodes, // Return all candidate codes so UI can print entire requested range
+        message: `All ${candidateCodes.length} barcodes in range IQB-${String(fromNum).padStart(6, '0')} to IQB-${String(toNum).padStart(6, '0')} already exist. Ready to print.`,
       });
     }
 
@@ -467,8 +468,10 @@ export const generateBarcodeRange = async (req, res) => {
         success: true,
         count: newBarcodes.length,
         skipped_count: skippedCount,
-        barcodes: newBarcodes,
-        message: `Generated ${newBarcodes.length} barcodes (IQB-${String(fromNum).padStart(6, '0')} to IQB-${String(toNum).padStart(6, '0')}). ${skippedCount > 0 ? `${skippedCount} duplicates skipped.` : ''}`
+        all_range_barcodes: candidateCodes,
+        barcodes: candidateCodes, // Return full candidate range so UI can immediately print entire range!
+        newly_generated: newBarcodes,
+        message: `Processed range: ${newBarcodes.length} newly created, ${skippedCount} existing. Total ${candidateCodes.length} barcodes ready to print.`
       });
     } catch (err) {
       await client.query('ROLLBACK');

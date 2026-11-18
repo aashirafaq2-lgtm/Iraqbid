@@ -49,7 +49,7 @@ if (-not $token) {
 Set-Location "E:\Ahmed work\temp-codemagic-repo"
 
 git add -A
-git commit -m "Release v1.0.2 (Build 13): Live Auction optimizations, 3D Lucky Wheel & Daily Challenge, Buy Now instant ordering, dynamic manual descriptions, and iOS App Store readiness"
+git commit -m "Release v1.0.3 (Build 14): Product details horizontal countdown & bid stepper layout, warning alert color logic, simplified Buy Now confirmation, profile screen overhaul (removed wallet & withdraw), and phone pre-check on auth"
 
 $remoteUrl = "https://aashirafaq2-lgtm:$token@github.com/aashirafaq2-lgtm/iraq-bid-app.git"
 
