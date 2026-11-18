@@ -1,7 +1,7 @@
 import express from "express";
 import { CouponController } from "../controllers/couponController.js";
 import { verifyUser } from "../middleware/authMiddleware.js";
-import { authorizeRoles } from "../middleware/authMiddleware.js";
+import { authorizeRoles } from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
 

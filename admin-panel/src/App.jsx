@@ -17,6 +17,7 @@ const API_ENTERPRISE = '/api/enterprise';
 const API_ADMIN = '/api/admin';
 const API_UPLOADS = '/api/uploads';
 const API_COUPONS = '/api/coupons';
+const API_SPECIAL_BIDDERS = '/api/special-bidders';
 
 export default function App() {
   // --- AUTHENTICATION & RBAC STATE ---
@@ -161,6 +162,21 @@ export default function App() {
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [pendingProducts, setPendingProducts] = useState([]);
+  const [customerSubTab, setCustomerSubTab] = useState('customers'); // 'customers' | 'special_bidders'
+
+  // --- SPECIAL BIDDERS MANAGEMENT STATE ---
+  const [specialBiddersList, setSpecialBiddersList] = useState([]);
+  const [specialBiddersLoading, setSpecialBiddersLoading] = useState(false);
+  const [selectedSpecialBidder, setSelectedSpecialBidder] = useState(null);
+  const [selectedAuctionForBid, setSelectedAuctionForBid] = useState(null);
+  const [specialBidAmountInput, setSpecialBidAmountInput] = useState('');
+  const [specialBidPlacing, setSpecialBidPlacing] = useState(false);
+  const [showCreateBidderModal, setShowCreateBidderModal] = useState(false);
+  const [editingSpecialBidder, setEditingSpecialBidder] = useState(null);
+  const [specialBidderForm, setSpecialBidderForm] = useState({ name: '', unique_id: '', is_active: true });
+  const [specialBidsLogs, setSpecialBidsLogs] = useState([]);
+  const [specialBidsLogsLoading, setSpecialBidsLogsLoading] = useState(false);
+  const [specialBidderViewMode, setSpecialBidderViewMode] = useState('profiles'); // 'profiles' | 'bidding' | 'history'
   const [liveAuctions, setLiveAuctions] = useState([]);
   const [referralsList, setReferralsList] = useState([]);
   const [analyticsData, setAnalyticsData] = useState([]);
@@ -552,6 +568,138 @@ export default function App() {
     }
   };
 
+  // --- SPECIAL BIDDERS MANAGEMENT HANDLERS ---
+  const fetchSpecialBidders = async () => {
+    setSpecialBiddersLoading(true);
+    try {
+      const res = await axios.get(`${API_SPECIAL_BIDDERS}`);
+      if (res.data.success) {
+        setSpecialBiddersList(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Special bidders fetch error:', err);
+    } finally {
+      setSpecialBiddersLoading(false);
+    }
+  };
+
+  const fetchSpecialBidsHistory = async (productId = null, bidderId = null) => {
+    setSpecialBidsLogsLoading(true);
+    try {
+      let url = `${API_SPECIAL_BIDDERS}/history/logs`;
+      const params = [];
+      if (productId) params.push(`product_id=${productId}`);
+      if (bidderId) params.push(`bidder_id=${bidderId}`);
+      if (params.length > 0) url += `?${params.join('&')}`;
+
+      const res = await axios.get(url);
+      if (res.data.success) {
+        setSpecialBidsLogs(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Special bids logs error:', err);
+    } finally {
+      setSpecialBidsLogsLoading(false);
+    }
+  };
+
+  const handleSaveSpecialBidder = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!specialBidderForm.name.trim()) {
+      alert('Please enter a Bidder Name');
+      return;
+    }
+    try {
+      if (editingSpecialBidder) {
+        const res = await axios.put(`${API_SPECIAL_BIDDERS}/${editingSpecialBidder.id}`, specialBidderForm);
+        if (res.data.success) {
+          alert('Special bidder profile updated!');
+          setShowCreateBidderModal(false);
+          setEditingSpecialBidder(null);
+          fetchSpecialBidders();
+        }
+      } else {
+        const res = await axios.post(`${API_SPECIAL_BIDDERS}`, specialBidderForm);
+        if (res.data.success) {
+          alert('Special bidder profile created successfully!');
+          setShowCreateBidderModal(false);
+          fetchSpecialBidders();
+        }
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleToggleSpecialBidderActive = async (profile) => {
+    try {
+      const res = await axios.put(`${API_SPECIAL_BIDDERS}/${profile.id}`, {
+        is_active: !profile.is_active
+      });
+      if (res.data.success) {
+        fetchSpecialBidders();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handleDeleteSpecialBidder = async (profile) => {
+    if (!window.confirm(`Are you sure you want to delete profile "${profile.name}" (${profile.unique_id})?`)) return;
+    try {
+      const res = await axios.delete(`${API_SPECIAL_BIDDERS}/${profile.id}`);
+      if (res.data.success) {
+        if (selectedSpecialBidder?.id === profile.id) {
+          setSelectedSpecialBidder(null);
+        }
+        fetchSpecialBidders();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
+  const handlePlaceSpecialBid = async () => {
+    if (!selectedSpecialBidder) {
+      alert('Please select a Special Bidder profile first!');
+      return;
+    }
+    if (!selectedAuctionForBid) {
+      alert('Please select an active product auction to bid on!');
+      return;
+    }
+    const currentPrice = parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0;
+    const bidAmount = parseFloat(specialBidAmountInput);
+    if (isNaN(bidAmount) || bidAmount <= currentPrice) {
+      alert(`Bid amount must be strictly higher than current highest bid ($${currentPrice})!`);
+      return;
+    }
+
+    setSpecialBidPlacing(true);
+    try {
+      const res = await axios.post(`${API_SPECIAL_BIDDERS}/place-bid`, {
+        special_bidder_id: selectedSpecialBidder.id,
+        product_id: selectedAuctionForBid.product_id || selectedAuctionForBid.id,
+        bid_amount: bidAmount
+      });
+
+      if (res.data.success) {
+        alert(res.data.message || `Bid of $${bidAmount} placed as ${selectedSpecialBidder.name}!`);
+        // Refresh live auctions, special bidders and history
+        fetchLiveAuctions();
+        fetchSpecialBidders();
+        fetchSpecialBidsHistory();
+        // Update currently selected auction object
+        setSelectedAuctionForBid(prev => prev ? { ...prev, current_bid: bidAmount, total_bids: (parseInt(prev.total_bids) || 0) + 1 } : null);
+        setSpecialBidAmountInput((bidAmount + 5).toFixed(2));
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    } finally {
+      setSpecialBidPlacing(false);
+    }
+  };
+
   // Initial Fetching
   useEffect(() => {
     if (authToken) {
@@ -571,6 +719,8 @@ export default function App() {
       fetchLogs();
       fetchBanners();
       fetchCoupons();
+      fetchSpecialBidders();
+      fetchSpecialBidsHistory();
     }
   }, [authToken]);
 
@@ -1955,69 +2105,884 @@ export default function App() {
         )}
 
         {/* =====================================================================
-            MODULE 5: CUSTOMER MANAGEMENT & 3-STRIKE CRM
+            MODULE 5: CUSTOMER MANAGEMENT & SPECIAL BIDDERS
            ===================================================================== */}
         {activeTab === 'users' && canAccessCRM && (
           <div style={{ padding: '32px' }}>
-            <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Customers CRM & 3-Strike Audit</h2>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '24px' }}>Complete customer profile, bidding logs, delivery history, and automated 3-strike refusal ban management.</p>
+            {/* Top Navigation Subtabs */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Customers & Special Bidders Management</h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>Manage registered mobile customers, refusal bans, and staff Special Bidder profiles for live auction bidding.</p>
+              </div>
 
-            <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
-              <input
-                type="text"
-                placeholder="Search customers by name, phone, or Customer ID..."
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                style={{ flex: 1, backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '11px 16px', color: '#fff', fontSize: '13px' }}
-              />
+              {/* Sub-tab Pill Switcher */}
+              <div style={{ display: 'flex', backgroundColor: '#0f172a', borderRadius: '12px', padding: '4px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <button
+                  onClick={() => setCustomerSubTab('customers')}
+                  style={{
+                    backgroundColor: customerSubTab === 'customers' ? '#38bdf8' : 'transparent',
+                    color: customerSubTab === 'customers' ? '#0f172a' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 18px',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Users size={15} />
+                  1. Customers & Strikes
+                </button>
+                <button
+                  onClick={() => {
+                    setCustomerSubTab('special_bidders');
+                    fetchSpecialBidders();
+                    fetchLiveAuctions();
+                  }}
+                  style={{
+                    backgroundColor: customerSubTab === 'special_bidders' ? '#38bdf8' : 'transparent',
+                    color: customerSubTab === 'special_bidders' ? '#0f172a' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 18px',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Bot size={15} />
+                  2. Special Bidders
+                </button>
+              </div>
             </div>
 
-            <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto', marginBottom: '32px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
-                    <th style={{ padding: '16px 20px' }}>Customer ID</th>
-                    <th style={{ padding: '16px 20px' }}>Full Name</th>
-                    <th style={{ padding: '16px 20px' }}>Phone / Email</th>
-                    <th style={{ padding: '16px 20px' }}>Refusal Strikes</th>
-                    <th style={{ padding: '16px 20px' }}>Account Status</th>
-                    <th style={{ padding: '16px 20px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.map(u => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '16px 20px', fontFamily: 'monospace' }}>#{u.id}</td>
-                      <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{u.name}</td>
-                      <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{u.phone || u.email}</td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: u.refusal_count >= 3 ? '#ef4444' : '#eab308' }}>
-                          {u.refusal_count || 0} / 3 Strikes
+            {/* SUB-TAB 1: CUSTOMERS LIST & 3-STRIKE CRM */}
+            {customerSubTab === 'customers' && (
+              <div>
+                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search customers by name, phone, or Customer ID..."
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    style={{ flex: 1, backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '11px 16px', color: '#fff', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto', marginBottom: '32px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                        <th style={{ padding: '16px 20px' }}>Customer ID</th>
+                        <th style={{ padding: '16px 20px' }}>Full Name</th>
+                        <th style={{ padding: '16px 20px' }}>Phone / Email</th>
+                        <th style={{ padding: '16px 20px' }}>Refusal Strikes</th>
+                        <th style={{ padding: '16px 20px' }}>Account Status</th>
+                        <th style={{ padding: '16px 20px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usersList.map(u => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '16px 20px', fontFamily: 'monospace' }}>#{u.id}</td>
+                          <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{u.name}</td>
+                          <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{u.phone || u.email}</td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: u.refusal_count >= 3 ? '#ef4444' : '#eab308' }}>
+                              {u.refusal_count || 0} / 3 Strikes
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <span style={{ fontSize: '11px', color: (u.is_banned || u.status === 'blocked') ? '#ef4444' : '#22c55e', backgroundColor: (u.is_banned || u.status === 'blocked') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: '4px', fontWeight: '700' }}>
+                              {(u.is_banned || u.status === 'blocked') ? 'PERMANENTLY BANNED' : 'Active'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <button
+                              onClick={async () => {
+                                const action = (u.is_banned || u.status === 'blocked') ? 'approve' : 'block';
+                                if (confirm(`Confirm ${action} for customer ${u.name}?`)) {
+                                  await axios.patch(`${API_ADMIN}/users/${action}/${u.id}`);
+                                  fetchUsers();
+                                  fetchKPI();
+                                }
+                              }}
+                              style={{ backgroundColor: (u.is_banned || u.status === 'blocked') ? '#16a34a' : '#dc2626', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                              {(u.is_banned || u.status === 'blocked') ? 'Unban Customer' : 'Ban Customer'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB 2: SPECIAL BIDDERS MANAGEMENT */}
+            {customerSubTab === 'special_bidders' && (
+              <div>
+                {/* Secondary navigation for Special Bidders (Profiles, Bidding Console, Audit Trail) */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={() => setSpecialBidderViewMode('profiles')}
+                      style={{
+                        backgroundColor: specialBidderViewMode === 'profiles' ? '#1e293b' : 'transparent',
+                        color: specialBidderViewMode === 'profiles' ? '#38bdf8' : '#94a3b8',
+                        border: '1px solid',
+                        borderColor: specialBidderViewMode === 'profiles' ? '#38bdf8' : 'rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <Users size={16} />
+                      1. Bidder Profiles ({specialBiddersList.length})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSpecialBidderViewMode('bidding');
+                        fetchLiveAuctions();
+                      }}
+                      style={{
+                        backgroundColor: specialBidderViewMode === 'bidding' ? '#1e293b' : 'transparent',
+                        color: specialBidderViewMode === 'bidding' ? '#10b981' : '#94a3b8',
+                        border: '1px solid',
+                        borderColor: specialBidderViewMode === 'bidding' ? '#10b981' : 'rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <Gavel size={16} />
+                      2. Live Auction Bidding Console
+                      {selectedSpecialBidder && (
+                        <span style={{ fontSize: '10px', backgroundColor: '#10b981', color: '#0f172a', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                          Active: {selectedSpecialBidder.name}
                         </span>
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <span style={{ fontSize: '11px', color: (u.is_banned || u.status === 'blocked') ? '#ef4444' : '#22c55e', backgroundColor: (u.is_banned || u.status === 'blocked') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: '4px', fontWeight: '700' }}>
-                          {(u.is_banned || u.status === 'blocked') ? 'PERMANENTLY BANNED' : 'Active'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '16px 20px' }}>
-                        <button
-                          onClick={async () => {
-                            const action = (u.is_banned || u.status === 'blocked') ? 'approve' : 'block';
-                            if (confirm(`Confirm ${action} for customer ${u.name}?`)) {
-                              await axios.patch(`${API_ADMIN}/users/${action}/${u.id}`);
-                              fetchUsers();
-                              fetchKPI();
-                            }
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSpecialBidderViewMode('history');
+                        fetchSpecialBidsHistory();
+                      }}
+                      style={{
+                        backgroundColor: specialBidderViewMode === 'history' ? '#1e293b' : 'transparent',
+                        color: specialBidderViewMode === 'history' ? '#a855f7' : '#94a3b8',
+                        border: '1px solid',
+                        borderColor: specialBidderViewMode === 'history' ? '#a855f7' : 'rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <History size={16} />
+                      3. Staff Bidding Audit Logs
+                    </button>
+                  </div>
+
+                  {specialBidderViewMode === 'profiles' && (
+                    <button
+                      onClick={() => {
+                        setEditingSpecialBidder(null);
+                        setSpecialBidderForm({
+                          name: `Bidder ${specialBiddersList.length + 1}`,
+                          unique_id: `SB-00${specialBiddersList.length + 1}`,
+                          is_active: true
+                        });
+                        setShowCreateBidderModal(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: '#38bdf8',
+                        color: '#0f172a',
+                        border: 'none',
+                        padding: '10px 18px',
+                        borderRadius: '10px',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        fontWeight: '700'
+                      }}
+                    >
+                      <Plus size={16} />
+                      Create New Special Bidder
+                    </button>
+                  )}
+                </div>
+
+                {/* VIEW 1: PROFILES LIST */}
+                {specialBidderViewMode === 'profiles' && (
+                  <div>
+                    {specialBiddersLoading ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Loading Special Bidder profiles...</div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+                        {specialBiddersList.map(profile => {
+                          const isSelected = selectedSpecialBidder?.id === profile.id;
+                          return (
+                            <div
+                              key={profile.id}
+                              style={{
+                                backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.05)' : '#0f172a',
+                                border: isSelected ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: '16px',
+                                padding: '20px',
+                                position: 'relative',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                      width: '42px',
+                                      height: '42px',
+                                      borderRadius: '12px',
+                                      backgroundColor: isSelected ? '#38bdf8' : '#1e293b',
+                                      color: isSelected ? '#0f172a' : '#38bdf8',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontWeight: '800',
+                                      fontSize: '16px'
+                                    }}>
+                                      {profile.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#fff', margin: 0 }}>{profile.name}</h3>
+                                      <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#64748b' }}>ID: {profile.unique_id}</span>
+                                    </div>
+                                  </div>
+
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    backgroundColor: profile.is_active ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                    color: profile.is_active ? '#22c55e' : '#ef4444'
+                                  }}>
+                                    {profile.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+
+                                <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '12px', marginBottom: '16px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
+                                    <span>Total Bids Placed:</span>
+                                    <strong style={{ color: '#fff' }}>{profile.total_bids_placed || 0}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8' }}>
+                                    <span>Highest Bid Submitted:</span>
+                                    <strong style={{ color: '#22c55e' }}>${parseFloat(profile.max_bid_placed || 0).toFixed(2)}</strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  onClick={() => {
+                                    setSelectedSpecialBidder(profile);
+                                    setSpecialBidderViewMode('bidding');
+                                    fetchLiveAuctions();
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    backgroundColor: isSelected ? '#10b981' : '#38bdf8',
+                                    color: '#0f172a',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '9px 12px',
+                                    fontWeight: '800',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px'
+                                  }}
+                                >
+                                  <Gavel size={14} />
+                                  {isSelected ? 'Ready for Bidding' : 'Select for Bidding'}
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setEditingSpecialBidder(profile);
+                                    setSpecialBidderForm({
+                                      name: profile.name,
+                                      unique_id: profile.unique_id,
+                                      is_active: profile.is_active
+                                    });
+                                    setShowCreateBidderModal(true);
+                                  }}
+                                  style={{
+                                    backgroundColor: '#1e293b',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#94a3b8',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Edit Profile"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+
+                                <button
+                                  onClick={() => handleToggleSpecialBidderActive(profile)}
+                                  style={{
+                                    backgroundColor: profile.is_active ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: profile.is_active ? '#ef4444' : '#22c55e',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: '700'
+                                  }}
+                                  title={profile.is_active ? 'Deactivate' : 'Activate'}
+                                >
+                                  {profile.is_active ? 'Disable' : 'Enable'}
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteSpecialBidder(profile)}
+                                  style={{
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    color: '#f87171',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Delete Profile"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* VIEW 2: LIVE AUCTION BIDDING CONSOLE */}
+                {specialBidderViewMode === 'bidding' && (
+                  <div>
+                    {/* Active Bidder Profile Banner */}
+                    <div style={{
+                      backgroundColor: '#1e293b',
+                      borderRadius: '16px',
+                      padding: '20px 24px',
+                      marginBottom: '24px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      border: '1px solid rgba(56, 189, 248, 0.2)',
+                      flexWrap: 'wrap',
+                      gap: '16px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '12px',
+                          backgroundColor: selectedSpecialBidder ? '#10b981' : '#64748b',
+                          color: '#0f172a',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: '900',
+                          fontSize: '20px'
+                        }}>
+                          {selectedSpecialBidder ? selectedSpecialBidder.name.charAt(0) : '?'}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Selected Bidder Profile</div>
+                          <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>
+                            {selectedSpecialBidder ? selectedSpecialBidder.name : 'No Bidder Selected'}
+                            {selectedSpecialBidder && <span style={{ fontSize: '13px', color: '#38bdf8', marginLeft: '10px', fontFamily: 'monospace' }}>({selectedSpecialBidder.unique_id})</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <select
+                          value={selectedSpecialBidder?.id || ''}
+                          onChange={(e) => {
+                            const found = specialBiddersList.find(b => b.id === parseInt(e.target.value));
+                            setSelectedSpecialBidder(found || null);
                           }}
-                          style={{ backgroundColor: (u.is_banned || u.status === 'blocked') ? '#16a34a' : '#dc2626', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                          {(u.is_banned || u.status === 'blocked') ? 'Unban Customer' : 'Ban Customer'}
+                          style={{
+                            backgroundColor: '#0f172a',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '10px',
+                            color: '#fff',
+                            padding: '10px 14px',
+                            fontSize: '13px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          <option value="">-- Switch Special Bidder Profile --</option>
+                          {specialBiddersList.filter(b => b.is_active).map(b => (
+                            <option key={b.id} value={b.id}>{b.name} ({b.unique_id})</option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={() => fetchLiveAuctions()}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundColor: '#0f172a',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '10px',
+                            color: '#94a3b8',
+                            padding: '10px 14px',
+                            fontSize: '13px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <RefreshCw size={14} /> Refresh Auctions
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+
+                    {/* Step 3 & 4: Display live products available for bidding */}
+                    <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '14px', color: '#fff' }}>
+                      Select a Live Product to Bid
+                    </h3>
+
+                    {liveAuctions.length === 0 ? (
+                      <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                        No active live auctions available at the moment.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+                        {liveAuctions.map(a => {
+                          const isCurrentActive = (selectedAuctionForBid?.product_id || selectedAuctionForBid?.id) === (a.product_id || a.id);
+                          const curPrice = parseFloat(a.current_bid) || parseFloat(a.starting_bid) || 0;
+                          return (
+                            <div
+                              key={a.product_id || a.id}
+                              onClick={() => {
+                                setSelectedAuctionForBid(a);
+                                setSpecialBidAmountInput((curPrice + 5).toFixed(2));
+                              }}
+                              style={{
+                                backgroundColor: isCurrentActive ? 'rgba(16, 185, 129, 0.08)' : '#0f172a',
+                                border: isCurrentActive ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: '16px',
+                                padding: '16px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <div style={{ position: 'relative', height: '140px', borderRadius: '10px', overflow: 'hidden', backgroundColor: '#1e293b', marginBottom: '12px' }}>
+                                <img
+                                  src={a.image_url ? `${API_UPLOADS}/${a.image_url.replace(/^\/+/, '')}` : 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid'}
+                                  alt={a.title}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={(e) => { e.target.src = 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid'; }}
+                                />
+                                <div style={{ position: 'absolute', top: '8px', right: '8px', backgroundColor: 'rgba(15, 23, 42, 0.85)', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', color: '#38bdf8', fontWeight: 'bold' }}>
+                                  {parseFloat(a.hours_left || 24).toFixed(1)}h left
+                                </div>
+                              </div>
+
+                              <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {a.title}
+                              </h4>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                                <span>Current Highest Bid:</span>
+                                <strong style={{ color: '#22c55e', fontSize: '14px' }}>${curPrice.toFixed(2)}</strong>
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+                                <span>Leader:</span>
+                                <span style={{ color: '#38bdf8' }}>{a.highest_bidder_name || 'None'}</span>
+                              </div>
+
+                              <button
+                                style={{
+                                  width: '100%',
+                                  backgroundColor: isCurrentActive ? '#10b981' : '#1e293b',
+                                  color: isCurrentActive ? '#0f172a' : '#38bdf8',
+                                  border: isCurrentActive ? 'none' : '1px solid rgba(56, 189, 248, 0.3)',
+                                  borderRadius: '8px',
+                                  padding: '8px',
+                                  fontWeight: '800',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {isCurrentActive ? '✓ Selected in Console' : 'Open Bidding Console'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Step 5 & Section 3: ADMIN BIDDING INTERFACE */}
+                    {selectedAuctionForBid && (
+                      <div style={{
+                        backgroundColor: '#0f172a',
+                        borderRadius: '20px',
+                        border: '2px solid #10b981',
+                        padding: '28px',
+                        marginBottom: '32px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '8px', borderRadius: '10px' }}>
+                              <Gavel size={24} />
+                            </div>
+                            <div>
+                              <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#fff', margin: 0 }}>Admin Bidding Console</h3>
+                              <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Place official bids on behalf of the selected Special Bidder directly from the admin panel.</p>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Bidding As:</span>
+                            <div style={{ fontSize: '15px', fontWeight: '800', color: '#38bdf8' }}>
+                              {selectedSpecialBidder ? selectedSpecialBidder.name : '⚠️ Please select a profile'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', alignItems: 'center' }}>
+                          {/* Product Summary */}
+                          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                            <img
+                              src={selectedAuctionForBid.image_url ? `${API_UPLOADS}/${selectedAuctionForBid.image_url.replace(/^\/+/, '')}` : 'https://placehold.co/120x120/1e293b/white?text=Iraq+Bid'}
+                              alt={selectedAuctionForBid.title}
+                              style={{ width: '100px', height: '100px', borderRadius: '12px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.08)' }}
+                              onError={(e) => { e.target.src = 'https://placehold.co/120x120/1e293b/white?text=Iraq+Bid'; }}
+                            />
+                            <div>
+                              <h4 style={{ fontSize: '17px', fontWeight: '800', color: '#fff', marginBottom: '6px' }}>
+                                {selectedAuctionForBid.title}
+                              </h4>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                                Auction ID: <span style={{ fontFamily: 'monospace', color: '#fff' }}>#{selectedAuctionForBid.product_id || selectedAuctionForBid.id}</span>
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                Ends in: <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{parseFloat(selectedAuctionForBid.hours_left || 24).toFixed(1)} hours</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Bid Pricing Stats */}
+                          <div style={{ backgroundColor: '#1e293b', borderRadius: '14px', padding: '16px 20px', display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>CURRENT HIGHEST BID</div>
+                              <div style={{ fontSize: '22px', fontWeight: '900', color: '#22c55e' }}>
+                                ${(parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0).toFixed(2)}
+                              </div>
+                            </div>
+                            <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>MINIMUM NEXT BID</div>
+                              <div style={{ fontSize: '22px', fontWeight: '900', color: '#38bdf8' }}>
+                                ${((parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0) + 1).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Bid Input and Place Action */}
+                          <div>
+                            <div style={{ marginBottom: '10px' }}>
+                              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
+                                Enter Bid Amount ($ USD):
+                              </label>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min={(parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0) + 0.01}
+                                  value={specialBidAmountInput}
+                                  onChange={(e) => setSpecialBidAmountInput(e.target.value)}
+                                  placeholder="0.00"
+                                  style={{
+                                    flex: 1,
+                                    backgroundColor: '#1e293b',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '10px',
+                                    padding: '12px 16px',
+                                    color: '#fff',
+                                    fontSize: '16px',
+                                    fontWeight: '800'
+                                  }}
+                                />
+
+                                {/* Quick Increment Buttons */}
+                                {[1, 5, 10, 25].map(inc => (
+                                  <button
+                                    key={inc}
+                                    type="button"
+                                    onClick={() => {
+                                      const base = parseFloat(specialBidAmountInput) || (parseFloat(selectedAuctionForBid.current_bid) || 0);
+                                      setSpecialBidAmountInput((base + inc).toFixed(2));
+                                    }}
+                                    style={{
+                                      backgroundColor: '#1e293b',
+                                      border: '1px solid rgba(255,255,255,0.1)',
+                                      borderRadius: '8px',
+                                      color: '#94a3b8',
+                                      padding: '0 12px',
+                                      fontSize: '12px',
+                                      fontWeight: '700',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    +{inc}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={handlePlaceSpecialBid}
+                              disabled={specialBidPlacing || !selectedSpecialBidder}
+                              style={{
+                                width: '100%',
+                                backgroundColor: selectedSpecialBidder ? '#10b981' : '#64748b',
+                                color: '#0f172a',
+                                border: 'none',
+                                borderRadius: '10px',
+                                padding: '14px',
+                                fontWeight: '900',
+                                fontSize: '14px',
+                                cursor: selectedSpecialBidder ? 'pointer' : 'not-allowed',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)'
+                              }}
+                            >
+                              <Gavel size={18} />
+                              {specialBidPlacing ? 'Placing Bid...' : `Confirm & Place Bid ($${specialBidAmountInput || '0.00'})`}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* VIEW 3: STAFF BIDDING AUDIT LOGS */}
+                {specialBidderViewMode === 'history' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0 }}>
+                        Special Bids Audit Trail & Activity Logs
+                      </h3>
+                      <button
+                        onClick={() => fetchSpecialBidsHistory()}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          backgroundColor: '#1e293b',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          color: '#94a3b8',
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <RefreshCw size={13} /> Refresh Logs
+                      </button>
+                    </div>
+
+                    <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                            <th style={{ padding: '16px 20px' }}>Log ID</th>
+                            <th style={{ padding: '16px 20px' }}>Special Bidder</th>
+                            <th style={{ padding: '16px 20px' }}>Product</th>
+                            <th style={{ padding: '16px 20px' }}>Bid Placed</th>
+                            <th style={{ padding: '16px 20px' }}>Staff / Employee</th>
+                            <th style={{ padding: '16px 20px' }}>Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {specialBidsLogsLoading ? (
+                            <tr>
+                              <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading audit logs...</td>
+                            </tr>
+                          ) : specialBidsLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No special bids have been placed yet.</td>
+                            </tr>
+                          ) : (
+                            specialBidsLogs.map(log => (
+                              <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '16px 20px', fontFamily: 'monospace' }}>#{log.id}</td>
+                                <td style={{ padding: '16px 20px' }}>
+                                  <div style={{ fontWeight: 'bold', color: '#fff' }}>{log.special_bidder_name}</div>
+                                  <span style={{ fontSize: '11px', color: '#38bdf8', fontFamily: 'monospace' }}>{log.special_bidder_code}</span>
+                                </td>
+                                <td style={{ padding: '16px 20px' }}>
+                                  <div style={{ fontWeight: '600', color: '#fff' }}>{log.product_title || `Product #${log.product_id}`}</div>
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>ID: {log.product_id}</span>
+                                </td>
+                                <td style={{ padding: '16px 20px' }}>
+                                  <span style={{ color: '#22c55e', fontWeight: '800', fontSize: '14px' }}>
+                                    ${parseFloat(log.bid_amount).toFixed(2)}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '16px 20px' }}>
+                                  <div style={{ color: '#fff' }}>{log.employee_name || 'Admin'}</div>
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {log.employee_id}</span>
+                                </td>
+                                <td style={{ padding: '16px 20px', color: '#94a3b8', fontSize: '12px' }}>
+                                  {new Date(log.created_at).toLocaleString()}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modal: Create or Edit Special Bidder */}
+        {showCreateBidderModal && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}>
+            <div style={{
+              backgroundColor: '#0f172a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '20px',
+              padding: '28px',
+              width: '100%',
+              maxWidth: '460px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0 }}>
+                  {editingSpecialBidder ? 'Edit Special Bidder Profile' : 'Create Special Bidder Profile'}
+                </h3>
+                <button
+                  onClick={() => setShowCreateBidderModal(false)}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSpecialBidder}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
+                    Bidder Profile Name (e.g. Bidder 1, Bidder 2, VIP Bot) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={specialBidderForm.name}
+                    onChange={e => setSpecialBidderForm({ ...specialBidderForm, name: e.target.value })}
+                    placeholder="e.g. Bidder 1"
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
+                    Unique ID / Identifier (e.g. SB-001, SB-VIP)
+                  </label>
+                  <input
+                    type="text"
+                    value={specialBidderForm.unique_id}
+                    onChange={e => setSpecialBidderForm({ ...specialBidderForm, unique_id: e.target.value })}
+                    placeholder="Auto-generated if empty"
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="checkbox"
+                    id="specialBidderActiveCheck"
+                    checked={specialBidderForm.is_active}
+                    onChange={e => setSpecialBidderForm({ ...specialBidderForm, is_active: e.target.checked })}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="specialBidderActiveCheck" style={{ fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                    Account Status: Active (Available for Bidding)
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateBidderModal(false)}
+                    style={{ flex: 1, backgroundColor: '#1e293b', border: 'none', color: '#94a3b8', padding: '12px', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    style={{ flex: 1, backgroundColor: '#38bdf8', border: 'none', color: '#0f172a', padding: '12px', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    {editingSpecialBidder ? 'Update Profile' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
