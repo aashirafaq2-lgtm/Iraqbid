@@ -18,8 +18,8 @@ export const requirePermission = (module, permissionType) => {
         return next();
       }
 
-      // Check user status
-      if (user.status !== 'active') {
+      // Check user status (allow both 'active' and 'approved')
+      if (user.status !== 'active' && user.status !== 'approved') {
         return res.status(403).json({ success: false, message: "Account is inactive or suspended" });
       }
 
