@@ -32,6 +32,7 @@ router.delete("/:id", deleteSpecialBidder);
 
 // Direct Bidding from Admin Panel
 router.post("/place-bid", placeSpecialBid);
+router.post("/bid", placeSpecialBid);
 
 // Audit History
 router.get("/history/logs", getSpecialBidsHistory);

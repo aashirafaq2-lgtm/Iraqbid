@@ -282,4 +282,71 @@ router.get("/logs/activity", requirePermission('system', 'view'), async (req, re
   }
 });
 
+// --- 12. REFERRALS & DAILY CHALLENGE STATS ---
+router.get("/referrals/stats", async (req, res) => {
+  try {
+    const todayRes = await pool.query("SELECT COUNT(*)::int as count FROM daily_challenge_invitations WHERE challenge_date = CURRENT_DATE");
+    const totalChallengeRes = await pool.query("SELECT COUNT(*)::int as count FROM daily_challenge_invitations");
+    const totalWheelRes = await pool.query("SELECT COUNT(*)::int as count FROM lucky_wheel_invitations");
+
+    const lbRes = await pool.query(`
+      SELECT 
+        u.id as user_id,
+        COALESCE(u.name, 'Bidder #' || u.id) as user_name,
+        u.phone as user_phone,
+        u.referral_token,
+        COUNT(dci.id)::int as today_invitations,
+        (SELECT COUNT(*)::int FROM daily_challenge_invitations WHERE inviter_id = u.id) as total_invitations
+      FROM daily_challenge_invitations dci
+      JOIN users u ON dci.inviter_id = u.id
+      WHERE dci.challenge_date = CURRENT_DATE
+      GROUP BY u.id, u.name, u.phone, u.referral_token
+      ORDER BY today_invitations DESC
+      LIMIT 10;
+    `);
+
+    const recentRes = await pool.query(`
+      (SELECT 
+        'Daily Challenge' as source,
+        dci.id,
+        u.name as inviter_name,
+        u.phone as inviter_phone,
+        dci.invitee_phone,
+        dci.created_at
+      FROM daily_challenge_invitations dci
+      JOIN users u ON dci.inviter_id = u.id
+      ORDER BY dci.created_at DESC
+      LIMIT 25)
+      UNION ALL
+      (SELECT 
+        'Lucky Wheel' as source,
+        lwi.id,
+        u.name as inviter_name,
+        u.phone as inviter_phone,
+        lwi.invitee_phone,
+        lwi.created_at
+      FROM lucky_wheel_invitations lwi
+      JOIN users u ON lwi.inviter_id = u.id
+      ORDER BY lwi.created_at DESC
+      LIMIT 25)
+      ORDER BY created_at DESC
+      LIMIT 50;
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        today_invitations: todayRes.rows[0]?.count || 0,
+        total_challenge_invitations: totalChallengeRes.rows[0]?.count || 0,
+        total_wheel_invitations: totalWheelRes.rows[0]?.count || 0,
+        leaderboard: lbRes.rows,
+        recent_invitations: recentRes.rows
+      }
+    });
+  } catch (err) {
+    console.error('Referrals stats error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;

@@ -655,8 +655,13 @@ export const AuthController = {
         return res.status(400).json({ success: false, message: "Invalid phone number format" });
       }
 
-      // MAGIC NUMBERS FOR APP STORE REVIEW
-      const magicNumbers = ['+9647500000000', '+964750000000', '+1234567890', '+964700000000', '+9644700000000', '+964000000000', '+1111111111', '750000000'];
+      // MAGIC NUMBERS FOR APP STORE REVIEW & CLIENT DEV NUMBERS
+      const magicNumbers = [
+        '+9647500000000', '+964750000000', '+1234567890', '+964700000000',
+        '+9644700000000', '+964000000000', '+1111111111', '750000000',
+        '+9647700914000', '+9647800914000', '+9647500914000',
+        '07700914000', '07800914000', '07500914000'
+      ];
       const isMagic = magicNumbers.includes(normalizedPhone) || magicNumbers.includes(phone);
 
       // REQUIREMENT: Check if user exists when attempting to login
@@ -731,8 +736,13 @@ export const AuthController = {
       const normalizedPhone = normalizeIraqPhone(phone);
       if (!normalizedPhone) return res.status(400).json({ success: false, message: "Invalid phone format" });
 
-      // MAGIC BYPASS LOGIC
-      const magicNumbers = ['+9647500000000', '+964750000000', '+1234567890', '+964700000000', '+9644700000000', '+964000000000', '+1111111111', '750000000'];
+      // MAGIC BYPASS LOGIC & CLIENT DEV NUMBERS
+      const magicNumbers = [
+        '+9647500000000', '+964750000000', '+1234567890', '+964700000000',
+        '+9644700000000', '+964000000000', '+1111111111', '750000000',
+        '+9647700914000', '+9647800914000', '+9647500914000',
+        '07700914000', '07800914000', '07500914000'
+      ];
       const isMagic = (magicNumbers.includes(normalizedPhone) || magicNumbers.includes(phone)) && otp === '123456';
 
       let otpValid = false;
@@ -788,6 +798,52 @@ export const AuthController = {
       }
 
       const user = userResult.rows[0];
+
+      // Process referral attribution if referral token provided
+      const rawRefToken = req.body?.referral_token || req.body?.ref_token || req.body?.ref;
+      const rawRefSource = (req.body?.referral_source || req.body?.source || 'challenge').toString().toLowerCase();
+      if (rawRefToken && typeof rawRefToken === 'string' && rawRefToken.trim().length > 0) {
+        try {
+          const inviterRes = await pool.query(
+            "SELECT id, name FROM users WHERE UPPER(referral_token) = $1",
+            [rawRefToken.trim().toUpperCase()]
+          );
+          if (inviterRes.rows.length > 0) {
+            const inviter = inviterRes.rows[0];
+            if (inviter.id !== user.id) {
+              if (rawRefSource === 'wheel') {
+                const insRes = await pool.query(`
+                  INSERT INTO lucky_wheel_invitations (inviter_id, invitee_id, invitee_phone)
+                  VALUES ($1, $2, $3)
+                  ON CONFLICT (invitee_phone) DO NOTHING
+                  RETURNING id
+                `, [inviter.id, user.id, normalizedPhone]);
+
+                if (insRes.rows.length > 0) {
+                  await pool.query(
+                    "UPDATE users SET wheel_spins = COALESCE(wheel_spins, 0) + 1 WHERE id = $1",
+                    [inviter.id]
+                  );
+                  console.log(`🎡 [REFERRAL] +1 Lucky Wheel spin awarded to user #${inviter.id} for inviting ${normalizedPhone}`);
+                }
+              } else {
+                const insRes = await pool.query(`
+                  INSERT INTO daily_challenge_invitations (inviter_id, invitee_id, invitee_phone, challenge_date)
+                  VALUES ($1, $2, $3, CURRENT_DATE)
+                  ON CONFLICT (invitee_phone) DO NOTHING
+                  RETURNING id
+                `, [inviter.id, user.id, normalizedPhone]);
+
+                if (insRes.rows.length > 0) {
+                  console.log(`🏆 [REFERRAL] +1 Daily Challenge invitation recorded for user #${inviter.id} for inviting ${normalizedPhone}`);
+                }
+              }
+            }
+          }
+        } catch (refErr) {
+          console.error("⚠️ [REFERRAL ATTRIBUTION ERROR]:", refErr.message);
+        }
+      }
 
       // Generate JWT
       const tokenPayload = { id: user.id, phone: user.phone, role: user.role, scope: 'mobile' };

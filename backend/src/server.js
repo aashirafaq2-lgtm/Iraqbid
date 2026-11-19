@@ -25,6 +25,8 @@ import couponRoutes from "./Routes/couponRoutes.js";
 import { initCouponTables } from "./controllers/couponController.js";
 import specialBidderRoutes from "./Routes/specialBidderRoutes.js";
 import { initSpecialBidderTables } from "./controllers/specialBidderController.js";
+import challengeRoutes from "./Routes/challengeRoutes.js";
+import { ChallengeController } from "./controllers/challengeController.js";
 import { runAutoBidderCycle } from "./controllers/enterpriseOperationsController.js";
 import cors from "cors";
 import pool from "./config/db.js";
@@ -159,6 +161,9 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/enterprise", enterpriseRoutes); // ✅ Iraq Bid Enterprise Admin Panel API
 app.use("/api/coupons", couponRoutes); // ✅ Influencer Coupons Management API
 app.use("/api/special-bidders", specialBidderRoutes); // ✅ Special Bidders Management & Bidding API
+app.use("/api/challenge", challengeRoutes); // ✅ Daily Challenge & Leaderboard API
+app.use("/api/wheel", challengeRoutes); // ✅ Lucky Wheel API
+app.get("/join", ChallengeController.handleJoinLanding); // ✅ Referral Join Web Landing & Deep-link Redirect
 
 // Health check routes
 app.get("/", (req, res) => res.send("BidMaster Admin API running ✅"));

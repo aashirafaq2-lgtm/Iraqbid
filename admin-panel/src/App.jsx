@@ -701,6 +701,23 @@ export default function App() {
     }
   };
 
+  const [referralsData, setReferralsData] = useState(null);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+
+  const fetchReferralsData = async () => {
+    setReferralsLoading(true);
+    try {
+      const res = await axios.get(`${API_ENTERPRISE}/referrals/stats`);
+      if (res.data.success) {
+        setReferralsData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Referrals stats error:', err);
+    } finally {
+      setReferralsLoading(false);
+    }
+  };
+
   // Helper to format live countdown timer (hh:mm:ss)
   const formatCountdownTimer = (endTimeStr, hoursLeftNum) => {
     if (!endTimeStr && !hoursLeftNum) return { text: '00:00:00', isCritical: false, totalSeconds: 0 };
@@ -740,6 +757,7 @@ export default function App() {
       fetchCoupons();
       fetchSpecialBidders();
       fetchSpecialBidsHistory();
+      fetchReferralsData();
     }
   }, [authToken]);
 
@@ -1460,7 +1478,11 @@ export default function App() {
             { id: 'inventory', label: '2. Inventory Management', icon: <Package size={18} /> },
             { id: 'barcodes', label: '3. Barcode Management', icon: <Barcode size={18} /> },
             ...(canAccessOps ? [{ id: 'live_auctions', label: '4. Auction Management', icon: <Gavel size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'users', label: '5. Customers', icon: <Users size={18} /> }] : []),
+            ...(canAccessCRM ? [
+              { id: 'users', label: '5. Customers', icon: <Users size={18} />, subTab: 'customers' },
+              { id: 'special_bidders_menu', label: '  ↳ Special Bidders', icon: <Bot size={16} />, subTab: 'special_bidders' },
+              { id: 'challenge_referrals_menu', label: '  ↳ Daily Challenge & Referrals', icon: <Award size={16} />, subTab: 'challenge_referrals' },
+            ] : []),
             ...(canAccessOps ? [{ id: 'orders', label: '6. Winners & Orders', icon: <ShoppingBag size={18} /> }] : []),
             ...(canAccessOps ? [{ id: 'shipping', label: '7. Shipping Management', icon: <Truck size={18} /> }] : []),
             ...(canAccessOps ? [{ id: 'labels', label: '8. Customer Order Labels', icon: <Printer size={18} /> }] : []),
@@ -1471,30 +1493,51 @@ export default function App() {
             ...(canAccessCRM ? [{ id: 'logs', label: '13. Activity Log', icon: <History size={18} /> }] : []),
             ...(canAccessCRM ? [{ id: 'banners', label: '14. Mobile Slideshow & Banners', icon: <ImageIcon size={18} /> }] : []),
             ...(canAccessCRM ? [{ id: 'settings', label: '15. System Settings', icon: <Settings size={18} /> }] : [])
-          ].map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '11px 14px',
-                borderRadius: '10px',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                backgroundColor: activeTab === item.id ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
-                color: activeTab === item.id ? '#38bdf8' : '#94a3b8',
-                fontWeight: activeTab === item.id ? '600' : '500',
-                fontSize: '13px',
-                borderLeft: activeTab === item.id ? '3px solid #38bdf8' : '3px solid transparent'
-              }}
-            >
-              {item.icon}
-              {sidebarOpen && <span>{item.label}</span>}
-            </button>
-          ))}
+          ].map(item => {
+            const isItemActive = item.subTab
+              ? (activeTab === 'users' && customerSubTab === item.subTab)
+              : (item.id === 'users' ? (activeTab === 'users' && customerSubTab === 'customers') : activeTab === item.id);
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (item.subTab) {
+                    setActiveTab('users');
+                    setCustomerSubTab(item.subTab);
+                    if (item.subTab === 'challenge_referrals') fetchReferralsData();
+                    if (item.subTab === 'special_bidders') {
+                      fetchSpecialBidders();
+                      fetchSpecialBidsHistory();
+                      fetchLiveAuctions();
+                    }
+                  } else {
+                    setActiveTab(item.id);
+                    if (item.id === 'users') {
+                      setCustomerSubTab('customers');
+                    }
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: item.subTab ? '8px 14px 8px 24px' : '11px 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  backgroundColor: isItemActive ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                  color: isItemActive ? '#38bdf8' : '#94a3b8',
+                  fontWeight: isItemActive ? '600' : '500',
+                  fontSize: item.subTab ? '12px' : '13px',
+                  borderLeft: isItemActive ? '3px solid #38bdf8' : '3px solid transparent'
+                }}
+              >
+                {item.icon}
+                {sidebarOpen && <span>{item.label}</span>}
+              </button>
+            );
+          })}
         </div>
 
         {/* User Card */}
@@ -2188,6 +2231,29 @@ export default function App() {
                 >
                   <Bot size={15} />
                   2. Special Bidders
+                </button>
+                <button
+                  onClick={() => {
+                    setCustomerSubTab('challenge_referrals');
+                    fetchReferralsData();
+                  }}
+                  style={{
+                    backgroundColor: customerSubTab === 'challenge_referrals' ? '#38bdf8' : 'transparent',
+                    color: customerSubTab === 'challenge_referrals' ? '#0f172a' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 18px',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Award size={15} />
+                  3. Daily Challenge & Referrals
                 </button>
               </div>
             </div>
@@ -2974,6 +3040,245 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* SUB-TAB 3: DAILY CHALLENGE & REFERRALS MANAGEMENT */}
+            {customerSubTab === 'challenge_referrals' && (
+              <div>
+                {/* Header & Controls */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '24px',
+                  backgroundColor: '#0f172a',
+                  padding: '20px',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px 0', fontSize: '18px', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Award size={22} color="#f59e0b" />
+                      Daily Challenge & Referral Growth Hub
+                    </h3>
+                    <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>
+                      Automated unique referral links (Zero manual codes), OTP-verified user acquisition, and strict separation between Daily Challenge & Lucky Wheel.
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchReferralsData}
+                    disabled={referralsLoading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '10px',
+                      padding: '10px 18px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <RefreshCw size={15} className={referralsLoading ? 'animate-spin' : ''} />
+                    Refresh Analytics
+                  </button>
+                </div>
+
+                {/* KPI Metrics Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+                  <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '16px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Today's Challenge</span>
+                      <Award size={18} color="#f59e0b" />
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#fff' }}>
+                      {referralsData?.stats?.today_invitations ?? 0}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>Active Daily Challenge participants today</span>
+                  </div>
+
+                  <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '16px', border: '1px solid rgba(168, 85, 247, 0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#c084fc', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Challenge Invites</span>
+                      <Users size={18} color="#c084fc" />
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#fff' }}>
+                      {referralsData?.stats?.total_challenge_invitations ?? 0}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>OTP-verified challenge invites all-time</span>
+                  </div>
+
+                  <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '16px', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lucky Wheel Invites</span>
+                      <Sliders size={18} color="#38bdf8" />
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#fff' }}>
+                      {referralsData?.stats?.total_wheel_invitations ?? 0}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>Independent wheel referral invites</span>
+                  </div>
+
+                  <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '16px', border: '1px solid rgba(34, 197, 94, 0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#4ade80', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Verified</span>
+                      <CheckCircle size={18} color="#4ade80" />
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#fff' }}>
+                      {referralsData?.stats?.total_all_invitations ?? 0}
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>Combined verified new user registrations</span>
+                  </div>
+                </div>
+
+                {/* Daily Challenge Leaderboard */}
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', padding: '20px', marginBottom: '28px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Award size={18} color="#f59e0b" />
+                      Daily Challenge Leaderboard (Today's Live Rankings)
+                    </h4>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Top 50 Rankers</span>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                          <th style={{ padding: '12px 16px' }}>Rank</th>
+                          <th style={{ padding: '12px 16px' }}>Participant / Customer</th>
+                          <th style={{ padding: '12px 16px' }}>Phone Number</th>
+                          <th style={{ padding: '12px 16px' }}>Referral Link Token</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'center' }}>Today's Invites</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'center' }}>Total Challenge</th>
+                          <th style={{ padding: '12px 16px' }}>Daily Challenge Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!referralsData?.leaderboard || referralsData.leaderboard.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                              No referral invitations recorded yet today. When users invite friends, rankings will update here automatically.
+                            </td>
+                          </tr>
+                        ) : (
+                          referralsData.leaderboard.map((item, idx) => {
+                            const isTop3 = idx < 3;
+                            const medalColor = idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#d97706' : '#64748b';
+                            return (
+                              <tr key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', backgroundColor: idx === 0 ? 'rgba(251, 191, 36, 0.04)' : 'transparent' }}>
+                                <td style={{ padding: '14px 16px', fontWeight: '800', color: medalColor }}>
+                                  {isTop3 ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <Award size={15} color={medalColor} /> #{idx + 1}
+                                    </span>
+                                  ) : `#${idx + 1}`}
+                                </td>
+                                <td style={{ padding: '14px 16px', fontWeight: '600', color: '#fff' }}>
+                                  {item.name || 'Anonymous User'}
+                                </td>
+                                <td style={{ padding: '14px 16px', color: '#94a3b8', fontFamily: 'monospace' }}>
+                                  {item.phone}
+                                </td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace' }}>
+                                    {item.referral_token || 'N/A'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                  <span style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '4px 12px', borderRadius: '12px', fontWeight: '800', fontSize: '13px' }}>
+                                    {item.today_count}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '14px 16px', textAlign: 'center', color: '#cbd5e1', fontWeight: '600' }}>
+                                  {item.total_challenge_count}
+                                </td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  {item.today_count > 0 ? (
+                                    <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <CheckCircle size={13} /> Competing for Today's Smartphone
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#64748b', fontSize: '12px' }}>Registered</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Real-time Verified Referrals Stream */}
+                <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <History size={18} color="#38bdf8" />
+                      Live Verified Invitations Stream (Strict Separation Enforced)
+                    </h4>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Latest 50 Successful Conversions</span>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                          <th style={{ padding: '12px 16px' }}>Source Pipeline</th>
+                          <th style={{ padding: '12px 16px' }}>Inviter (Existing Customer)</th>
+                          <th style={{ padding: '12px 16px' }}>Invitee Phone (New User)</th>
+                          <th style={{ padding: '12px 16px' }}>Registration Date & Time</th>
+                          <th style={{ padding: '12px 16px' }}>Anti-Cheat & Validation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!referralsData?.recent_invitations || referralsData.recent_invitations.length === 0 ? (
+                          <tr>
+                            <td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                              No referral events recorded yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          referralsData.recent_invitations.map(row => (
+                            <tr key={`${row.type}-${row.id}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '14px 16px' }}>
+                                {row.type === 'Daily Challenge' ? (
+                                  <span style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>
+                                    🏆 Daily Challenge
+                                  </span>
+                                ) : (
+                                  <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>
+                                    🎡 Lucky Wheel
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ color: '#fff', fontWeight: '600' }}>{row.inviter_name || 'Customer'}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{row.inviter_phone}</div>
+                              </td>
+                              <td style={{ padding: '14px 16px', color: '#4ade80', fontFamily: 'monospace', fontWeight: '600' }}>
+                                {row.invitee_phone}
+                              </td>
+                              <td style={{ padding: '14px 16px', color: '#94a3b8', fontSize: '12px' }}>
+                                {new Date(row.created_at).toLocaleString()}
+                              </td>
+                              <td style={{ padding: '14px 16px' }}>
+                                <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <CheckCircle size={13} /> OTP Verified & Unique Account
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
           </div>
