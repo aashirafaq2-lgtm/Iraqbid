@@ -177,6 +177,7 @@ export default function App() {
   const [specialBidsLogs, setSpecialBidsLogs] = useState([]);
   const [specialBidsLogsLoading, setSpecialBidsLogsLoading] = useState(false);
   const [specialBidderViewMode, setSpecialBidderViewMode] = useState('profiles'); // 'profiles' | 'bidding' | 'history'
+  const [liveNowTime, setLiveNowTime] = useState(Date.now());
   const [liveAuctions, setLiveAuctions] = useState([]);
   const [referralsList, setReferralsList] = useState([]);
   const [analyticsData, setAnalyticsData] = useState([]);
@@ -659,7 +660,7 @@ export default function App() {
     }
   };
 
-  const handlePlaceSpecialBid = async () => {
+  const handlePlaceSpecialBid = async (overrideAmount = null) => {
     if (!selectedSpecialBidder) {
       alert('Please select a Special Bidder profile first!');
       return;
@@ -669,9 +670,9 @@ export default function App() {
       return;
     }
     const currentPrice = parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0;
-    const bidAmount = parseFloat(specialBidAmountInput);
+    const bidAmount = overrideAmount !== null ? parseFloat(overrideAmount) : parseFloat(specialBidAmountInput);
     if (isNaN(bidAmount) || bidAmount <= currentPrice) {
-      alert(`Bid amount must be strictly higher than current highest bid ($${currentPrice})!`);
+      alert(`Bid amount must be strictly higher than current highest bid ($${currentPrice.toFixed(2)})!`);
       return;
     }
 
@@ -700,6 +701,24 @@ export default function App() {
     }
   };
 
+  // Helper to format live countdown timer (hh:mm:ss)
+  const formatCountdownTimer = (endTimeStr, hoursLeftNum) => {
+    if (!endTimeStr && !hoursLeftNum) return { text: '00:00:00', isCritical: false, totalSeconds: 0 };
+    let totalSeconds = 0;
+    if (endTimeStr) {
+      const diffMs = new Date(endTimeStr).getTime() - Date.now();
+      totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
+    } else {
+      totalSeconds = Math.max(0, Math.floor(parseFloat(hoursLeftNum || 0) * 3600));
+    }
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    const text = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    const isCritical = totalSeconds > 0 && totalSeconds <= 300; // Critical warning if <= 5 minutes left
+    return { text, isCritical, totalSeconds };
+  };
+
   // Initial Fetching
   useEffect(() => {
     if (authToken) {
@@ -723,6 +742,14 @@ export default function App() {
       fetchSpecialBidsHistory();
     }
   }, [authToken]);
+
+  // Live 1-second interval ticker for ticking countdown timers
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLiveNowTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (authToken) fetchInventory();
@@ -2700,12 +2727,37 @@ export default function App() {
                               <h4 style={{ fontSize: '17px', fontWeight: '800', color: '#fff', marginBottom: '6px' }}>
                                 {selectedAuctionForBid.title}
                               </h4>
-                              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
                                 Auction ID: <span style={{ fontFamily: 'monospace', color: '#fff' }}>#{selectedAuctionForBid.product_id || selectedAuctionForBid.id}</span>
                               </div>
-                              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                Ends in: <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{parseFloat(selectedAuctionForBid.hours_left || 24).toFixed(1)} hours</span>
-                              </div>
+                              {/* Live Ticking Countdown Timer with Glowing Urgent Alert */}
+                              {(() => {
+                                const timerData = formatCountdownTimer(selectedAuctionForBid.auction_end_time, selectedAuctionForBid.hours_left);
+                                return (
+                                  <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    backgroundColor: timerData.isCritical ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.1)',
+                                    border: `1px solid ${timerData.isCritical ? '#ef4444' : 'rgba(56, 189, 248, 0.3)'}`,
+                                    borderRadius: '8px',
+                                    padding: '4px 10px',
+                                    color: timerData.isCritical ? '#ef4444' : '#38bdf8',
+                                    fontWeight: '800',
+                                    fontSize: '12px',
+                                    letterSpacing: '0.04em',
+                                    animation: timerData.isCritical ? 'pulse 1s infinite' : 'none'
+                                  }}>
+                                    <span>⏱️ Time Left:</span>
+                                    <span style={{ fontFamily: 'monospace', fontSize: '13px' }}>{timerData.text}</span>
+                                    {timerData.isCritical && (
+                                      <span style={{ fontSize: '10px', backgroundColor: '#ef4444', color: '#fff', padding: '1px 5px', borderRadius: '4px', marginLeft: '4px' }}>
+                                        URGENT
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -2726,11 +2778,46 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Bid Input and Place Action */}
+                          {/* Bid Input, 1-Click Fast Bid, and Place Action */}
                           <div>
+                            {/* Improvement 1: 1-Click Fast Bid Buttons (Turbo Bidding) */}
+                            <div style={{ marginBottom: '12px' }}>
+                              <label style={{ fontSize: '11px', color: '#38bdf8', display: 'block', marginBottom: '6px', fontWeight: '700', textTransform: 'uppercase' }}>
+                                ⚡ 1-Click Instant Turbo Bids:
+                              </label>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                                {[1, 5, 10].map(inc => {
+                                  const curPrice = parseFloat(selectedAuctionForBid.current_bid) || parseFloat(selectedAuctionForBid.starting_bid) || 0;
+                                  const targetPrice = (curPrice + inc).toFixed(2);
+                                  return (
+                                    <button
+                                      key={inc}
+                                      type="button"
+                                      disabled={specialBidPlacing || !selectedSpecialBidder}
+                                      onClick={() => handlePlaceSpecialBid(targetPrice)}
+                                      style={{
+                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                                        borderRadius: '8px',
+                                        color: '#34d399',
+                                        padding: '7px 4px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        cursor: selectedSpecialBidder ? 'pointer' : 'not-allowed',
+                                        transition: 'all 0.15s'
+                                      }}
+                                      title={`Instantly place bid of $${targetPrice}`}
+                                    >
+                                      +${inc} Instant (${targetPrice})
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
                             <div style={{ marginBottom: '10px' }}>
                               <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
-                                Enter Bid Amount ($ USD):
+                                Or Enter Custom Bid Amount ($ USD):
                               </label>
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <input
@@ -2745,9 +2832,9 @@ export default function App() {
                                     backgroundColor: '#1e293b',
                                     border: '1px solid rgba(255,255,255,0.1)',
                                     borderRadius: '10px',
-                                    padding: '12px 16px',
+                                    padding: '10px 14px',
                                     color: '#fff',
-                                    fontSize: '16px',
+                                    fontSize: '15px',
                                     fontWeight: '800'
                                   }}
                                 />
@@ -2766,8 +2853,8 @@ export default function App() {
                                       border: '1px solid rgba(255,255,255,0.1)',
                                       borderRadius: '8px',
                                       color: '#94a3b8',
-                                      padding: '0 12px',
-                                      fontSize: '12px',
+                                      padding: '0 10px',
+                                      fontSize: '11px',
                                       fontWeight: '700',
                                       cursor: 'pointer'
                                     }}
@@ -2779,7 +2866,7 @@ export default function App() {
                             </div>
 
                             <button
-                              onClick={handlePlaceSpecialBid}
+                              onClick={() => handlePlaceSpecialBid()}
                               disabled={specialBidPlacing || !selectedSpecialBidder}
                               style={{
                                 width: '100%',
@@ -2787,9 +2874,9 @@ export default function App() {
                                 color: '#0f172a',
                                 border: 'none',
                                 borderRadius: '10px',
-                                padding: '14px',
+                                padding: '12px',
                                 fontWeight: '900',
-                                fontSize: '14px',
+                                fontSize: '13px',
                                 cursor: selectedSpecialBidder ? 'pointer' : 'not-allowed',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2798,7 +2885,7 @@ export default function App() {
                                 boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)'
                               }}
                             >
-                              <Gavel size={18} />
+                              <Gavel size={17} />
                               {specialBidPlacing ? 'Placing Bid...' : `Confirm & Place Bid ($${specialBidAmountInput || '0.00'})`}
                             </button>
                           </div>
