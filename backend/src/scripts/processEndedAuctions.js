@@ -54,16 +54,18 @@ async function processEndedAuctions() {
                 if (hasValidWinner) {
                     // 1. Create order linked to physical inventory
                     const orderNumber = `IQB-ORD-${Date.now().toString().slice(-6)}`;
+                    const sellerId = auction.seller_id || 8;
                     const orderRes = await client.query(`
                       INSERT INTO orders (
-                        product_id, buyer_id, amount, final_price, 
+                        product_id, buyer_id, seller_id, amount, final_price, 
                         shipping_cost, delivery_status, payment_status, 
                         inventory_item_id, order_number, created_at, status
-                      ) VALUES ($1, $2, $3, $3, 5.00, 'pending', 'pending', $4, $5, NOW(), 'pending')
+                      ) VALUES ($1, $2, $3, $4, $4, 5.00, 'pending', 'pending', $5, $6, NOW(), 'pending')
                       RETURNING id;
                     `, [
                       auction.id, 
                       auction.highest_bidder_id, 
+                      sellerId,
                       auction.current_bid, 
                       auction.inventory_item_id || null, 
                       orderNumber

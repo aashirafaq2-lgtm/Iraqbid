@@ -827,6 +827,7 @@ export const MobileProductController = {
       const inventoryItemId = invRes.rows[0]?.id || null;
 
       // 3. Create order in orders table
+      const sellerId = product.seller_id || 8;
       const finalPhone = phone || buyerUser.phone || '';
       const notesCombined = [
         appliedCoupon ? `Coupon: ${appliedCoupon.coupon_code} (-$${discountAmount})` : '',
@@ -838,18 +839,19 @@ export const MobileProductController = {
 
       const orderRes = await pool.query(`
         INSERT INTO orders (
-          order_number, product_id, buyer_id, amount, final_price, original_amount,
+          order_number, product_id, buyer_id, seller_id, amount, final_price, original_amount,
           discount_amount, coupon_code, shipping_cost,
           status, payment_status, delivery_status, shipping_notes, inventory_item_id, created_at
         ) VALUES (
-          $1, $2, $3, $4, $4, $5,
-          $6, $7, 0,
-          'pending', 'pending', 'pending', $8, $9, CURRENT_TIMESTAMP
+          $1, $2, $3, $4, $5, $5, $6,
+          $7, $8, 0,
+          'pending', 'pending', 'pending', $9, $10, CURRENT_TIMESTAMP
         ) RETURNING *;
       `, [
         orderNumber,
         product.id,
         buyerId,
+        sellerId,
         finalPrice,
         buyNowPrice,
         discountAmount,
