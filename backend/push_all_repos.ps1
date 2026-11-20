@@ -1,5 +1,5 @@
 param(
-    [string]$CommitMessage = "Feat: Fix Buy Now seller_id constraint, enhance Influencer Coupons and Wons screen"
+    [string]$CommitMessage = "Feat: Show product pictures on Special Bidder profiles, fix identical auction times, and fix signup username default"
 )
 
 # 1. Push temp-codemagic-repo (Flutter standalone repo used by Codemagic)

@@ -64,7 +64,7 @@ export async function initSpecialBidderTables() {
   }
 }
 
-// 1. Get all special bidder profiles with usage stats
+// 1. Get all special bidder profiles with usage stats & latest product details
 export const getSpecialBidders = async (req, res) => {
   try {
     const query = `
@@ -78,11 +78,24 @@ export const getSpecialBidders = async (req, res) => {
         u.name as creator_name,
         COUNT(sbl.id)::int as total_bids_placed,
         COALESCE(MAX(sbl.bid_amount), 0) as max_bid_placed,
-        MAX(sbl.created_at) as last_bid_placed_at
+        MAX(sbl.created_at) as last_bid_placed_at,
+        latest_bid.product_id as latest_product_id,
+        latest_bid.product_title as latest_product_title,
+        latest_bid.bid_amount as latest_bid_amount,
+        latest_bid.created_at as latest_bid_time,
+        p.image_url as latest_product_image
       FROM special_bidders sb
       LEFT JOIN users u ON sb.created_by = u.id
       LEFT JOIN special_bids_log sbl ON sb.id = sbl.special_bidder_id
-      GROUP BY sb.id, u.name
+      LEFT JOIN LATERAL (
+        SELECT sbl2.product_id, sbl2.product_title, sbl2.bid_amount, sbl2.created_at
+        FROM special_bids_log sbl2
+        WHERE sbl2.special_bidder_id = sb.id
+        ORDER BY sbl2.id DESC
+        LIMIT 1
+      ) latest_bid ON true
+      LEFT JOIN products p ON latest_bid.product_id = p.id
+      GROUP BY sb.id, u.name, latest_bid.product_id, latest_bid.product_title, latest_bid.bid_amount, latest_bid.created_at, p.image_url
       ORDER BY sb.id ASC;
     `;
     const result = await pool.query(query);

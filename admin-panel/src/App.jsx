@@ -19,6 +19,13 @@ const API_UPLOADS = '/api/uploads';
 const API_COUPONS = '/api/coupons';
 const API_SPECIAL_BIDDERS = '/api/special-bidders';
 
+const resolveImageUrl = (img) => {
+  if (!img) return 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid';
+  if (typeof img !== 'string') return 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid';
+  if (img.startsWith('http://') || img.startsWith('https://')) return img;
+  return `${API_UPLOADS}/${img.replace(/^\/+/, '')}`;
+};
+
 export default function App() {
   // --- AUTHENTICATION & RBAC STATE ---
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('iraqbid_admin_token') || '');
@@ -2490,7 +2497,7 @@ export default function App() {
                                   </span>
                                 </div>
 
-                                <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '12px', marginBottom: '16px' }}>
+                                <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '12px', marginBottom: '14px' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
                                     <span>Total Bids Placed:</span>
                                     <strong style={{ color: '#fff' }}>{profile.total_bids_placed || 0}</strong>
@@ -2500,6 +2507,59 @@ export default function App() {
                                     <strong style={{ color: '#22c55e' }}>${parseFloat(profile.max_bid_placed || 0).toFixed(2)}</strong>
                                   </div>
                                 </div>
+
+                                {/* Active Product Bidding Card */}
+                                {profile.latest_product_title ? (
+                                  <div style={{
+                                    backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                                    borderRadius: '12px',
+                                    padding: '10px 12px',
+                                    marginBottom: '16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px'
+                                  }}>
+                                    <img
+                                      src={resolveImageUrl(profile.latest_product_image)}
+                                      alt={profile.latest_product_title}
+                                      style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '8px',
+                                        objectFit: 'cover',
+                                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                                        flexShrink: 0
+                                      }}
+                                      onError={(e) => { e.target.src = 'https://placehold.co/120x120/1e293b/white?text=Iraq+Bid'; }}
+                                    />
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: '#38bdf8', fontWeight: '800', letterSpacing: '0.05em' }}>
+                                        🎯 Bidding On Product
+                                      </div>
+                                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={profile.latest_product_title}>
+                                        {profile.latest_product_title}
+                                      </div>
+                                      <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                                        <span>Bid: <strong style={{ color: '#22c55e' }}>${parseFloat(profile.latest_bid_amount || 0).toFixed(2)}</strong></span>
+                                        <span style={{ color: '#64748b', fontSize: '10px' }}>#{profile.latest_product_id}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{
+                                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px dashed rgba(255,255,255,0.08)',
+                                    borderRadius: '12px',
+                                    padding: '12px',
+                                    marginBottom: '16px',
+                                    textAlign: 'center',
+                                    color: '#64748b',
+                                    fontSize: '11px'
+                                  }}>
+                                    ⚡ No active product bid yet (Ready to bid)
+                                  </div>
+                                )}
                               </div>
 
                               <div style={{ display: 'flex', gap: '8px' }}>
@@ -2707,7 +2767,7 @@ export default function App() {
                             >
                               <div style={{ position: 'relative', height: '140px', borderRadius: '10px', overflow: 'hidden', backgroundColor: '#1e293b', marginBottom: '12px' }}>
                                 <img
-                                  src={a.image_url ? `${API_UPLOADS}/${a.image_url.replace(/^\/+/, '')}` : 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid'}
+                                  src={resolveImageUrl(a.image_url)}
                                   alt={a.title}
                                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                   onError={(e) => { e.target.src = 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid'; }}
@@ -2784,7 +2844,7 @@ export default function App() {
                           {/* Product Summary */}
                           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                             <img
-                              src={selectedAuctionForBid.image_url ? `${API_UPLOADS}/${selectedAuctionForBid.image_url.replace(/^\/+/, '')}` : 'https://placehold.co/120x120/1e293b/white?text=Iraq+Bid'}
+                              src={resolveImageUrl(selectedAuctionForBid.image_url)}
                               alt={selectedAuctionForBid.title}
                               style={{ width: '100px', height: '100px', borderRadius: '12px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.08)' }}
                               onError={(e) => { e.target.src = 'https://placehold.co/120x120/1e293b/white?text=Iraq+Bid'; }}
@@ -3017,8 +3077,20 @@ export default function App() {
                                   <span style={{ fontSize: '11px', color: '#38bdf8', fontFamily: 'monospace' }}>{log.special_bidder_code}</span>
                                 </td>
                                 <td style={{ padding: '16px 20px' }}>
-                                  <div style={{ fontWeight: '600', color: '#fff' }}>{log.product_title || `Product #${log.product_id}`}</div>
-                                  <span style={{ fontSize: '11px', color: '#64748b' }}>ID: {log.product_id}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    {log.product_image && (
+                                      <img
+                                        src={resolveImageUrl(log.product_image)}
+                                        alt=""
+                                        style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}
+                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                      />
+                                    )}
+                                    <div>
+                                      <div style={{ fontWeight: '600', color: '#fff' }}>{log.product_title || `Product #${log.product_id}`}</div>
+                                      <span style={{ fontSize: '11px', color: '#64748b' }}>ID: #{log.product_id}</span>
+                                    </div>
+                                  </div>
                                 </td>
                                 <td style={{ padding: '16px 20px' }}>
                                   <span style={{ color: '#22c55e', fontWeight: '800', fontSize: '14px' }}>

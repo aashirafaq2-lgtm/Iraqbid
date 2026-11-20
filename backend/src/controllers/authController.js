@@ -601,9 +601,12 @@ export const AuthController = {
         return res.status(400).json({ success: false, message: "This phone number is already registered. Please login." });
       }
 
+      const providedName = (name || '').trim();
+      const initialName = providedName || `User ${Math.floor(1000 + Math.random() * 9000)}`;
+
       await pool.query(
         "INSERT INTO users (name, phone, role, status, is_verified) VALUES ($1, $2, 'buyer', 'pending', false)",
-        [name || 'New User', normalizedPhone]
+        [initialName, normalizedPhone]
       );
 
       // Trigger OTP send
@@ -772,7 +775,9 @@ export const AuthController = {
       await pool.query("DELETE FROM otp_codes WHERE phone_number = $1", [normalizedPhone]);
 
       // Fetch user for token generation
-      const userResult = await pool.query("SELECT * FROM users WHERE phone = $1", [normalizedPhone]);
+      let userResult = await pool.query("SELECT * FROM users WHERE phone = $1", [normalizedPhone]);
+
+      const providedName = (req.body?.name || req.body?.full_name || '').trim();
 
       // If user doesn't exist: check if this was a registration attempt or forbidden login
       if (userResult.rows.length === 0) {
@@ -789,12 +794,24 @@ export const AuthController = {
         const defaultRole = (userType === 'seller') ? 'seller_products' : 'company_products';
         const rawDigits = normalizedPhone.replace(/\D/g, '');
         const autoEmail = `user${rawDigits}@iraqbid.net`;
+        const finalName = providedName || `User ${Math.floor(1000 + Math.random() * 9000)}`;
         const newUser = await pool.query(
           "INSERT INTO users (name, email, phone, role, status, is_verified, created_at) VALUES ($1, $2, $3, $4, 'approved', true, CURRENT_TIMESTAMP) RETURNING *",
-          [`User ${normalizedPhone.slice(-4)}`, autoEmail, normalizedPhone, defaultRole]
+          [finalName, autoEmail, normalizedPhone, defaultRole]
         );
         userResult.rows[0] = newUser.rows[0];
-        console.log(`✨ [REGISTRATION] User account created on verification for ${normalizedPhone}`);
+        console.log(`✨ [REGISTRATION] User account created with name "${finalName}" on verification for ${normalizedPhone}`);
+      } else {
+        // User already exists in DB - if name was provided and existing name is default/generic, update it!
+        const existing = userResult.rows[0];
+        if (providedName && (existing.name === 'New User' || /^User\s*\d*$/i.test(existing.name))) {
+          const upd = await pool.query(
+            "UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+            [providedName, existing.id]
+          );
+          userResult.rows[0] = upd.rows[0];
+          console.log(`✨ [AUTH] Updated generic user name for #${existing.id} from "${existing.name}" to "${providedName}"`);
+        }
       }
 
       const user = userResult.rows[0];
