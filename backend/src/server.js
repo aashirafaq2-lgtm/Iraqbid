@@ -165,6 +165,32 @@ app.use("/api/challenge", challengeRoutes); // ✅ Daily Challenge & Leaderboard
 app.use("/api/wheel", challengeRoutes); // ✅ Lucky Wheel API
 app.get("/join", ChallengeController.handleJoinLanding); // ✅ Referral Join Web Landing & Deep-link Redirect
 
+// Public settings route (for Accounts WhatsApp number)
+app.get("/api/system-settings/public", async (req, res) => {
+  try {
+    const q = await pool.query("SELECT key, value FROM system_settings WHERE key = 'accounts_whatsapp_number'");
+    const number = q.rows[0]?.value || '+9647700000000';
+    res.json({ success: true, data: { accounts_whatsapp_number: number } });
+  } catch (err) {
+    res.json({ success: true, data: { accounts_whatsapp_number: '+9647700000000' } });
+  }
+});
+
+// Update settings (Admin)
+app.put("/api/admin/system-settings/whatsapp", async (req, res) => {
+  try {
+    const { number } = req.body;
+    if (!number) return res.status(400).json({ success: false, message: "WhatsApp number required" });
+    await pool.query(
+      "INSERT INTO system_settings (key, value, updated_at) VALUES ('accounts_whatsapp_number', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()",
+      [number.trim()]
+    );
+    res.json({ success: true, message: "Accounts WhatsApp number updated successfully" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Health check routes
 app.get("/", (req, res) => res.send("BidMaster Admin API running ✅"));
 
