@@ -88,8 +88,8 @@ export const ChallengeController = {
       }
 
       const referralLink = userRefToken 
-        ? `https://iraqbid.net/join?ref=${userRefToken}&source=challenge` 
-        : `https://iraqbid.net/join?ref=CHALLENGE&source=challenge`;
+        ? `https://admin.iraqbid.net/join?ref=${userRefToken}&source=challenge` 
+        : `https://admin.iraqbid.net/join?ref=CHALLENGE&source=challenge`;
 
       return res.json({
         success: true,
@@ -132,8 +132,8 @@ export const ChallengeController = {
       }
 
       const referralLink = userRefToken 
-        ? `https://iraqbid.net/join?ref=${userRefToken}&source=wheel` 
-        : `https://iraqbid.net/join?ref=WHEEL&source=wheel`;
+        ? `https://admin.iraqbid.net/join?ref=${userRefToken}&source=wheel` 
+        : `https://admin.iraqbid.net/join?ref=WHEEL&source=wheel`;
 
       const prizes = [
         { id: 1, label: "10% Coupon", type: "coupon", value: 10, color: "#DC2626" },
