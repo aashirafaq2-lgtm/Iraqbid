@@ -130,7 +130,16 @@ export const createSpecialBidder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A special bidder profile with this Unique ID already exists' });
     }
 
-    const employeeId = req.user?.id || 1;
+    let employeeId = req.user?.id ? parseInt(req.user.id) : null;
+    if (employeeId) {
+      const uCheck = await pool.query("SELECT id FROM users WHERE id = $1", [employeeId]);
+      if (uCheck.rows.length === 0) employeeId = null;
+    }
+    if (!employeeId) {
+      const fallback = await pool.query("SELECT id FROM users WHERE role IN ('superadmin', 'admin') ORDER BY id ASC LIMIT 1");
+      employeeId = fallback.rows[0]?.id || 1;
+    }
+
     const insertRes = await pool.query(
       `INSERT INTO special_bidders (name, unique_id, is_active, created_by)
        VALUES ($1, $2, $3, $4)
@@ -218,8 +227,23 @@ export const placeSpecialBid = async (req, res) => {
   const client = await pool.connect();
   try {
     const { special_bidder_id, product_id, bid_amount } = req.body;
-    const employeeId = req.user?.id || 1;
-    const employeeName = req.user?.full_name || req.user?.name || 'Authorized Staff';
+    let employeeId = req.user?.id ? parseInt(req.user.id) : null;
+    let employeeName = req.user?.full_name || req.user?.name || 'Authorized Staff';
+
+    if (employeeId) {
+      const uCheck = await client.query("SELECT id, name FROM users WHERE id = $1", [employeeId]);
+      if (uCheck.rows.length === 0) {
+        const fallback = await client.query("SELECT id, name FROM users WHERE role IN ('superadmin', 'admin') ORDER BY id ASC LIMIT 1");
+        employeeId = fallback.rows[0]?.id || 1;
+        employeeName = fallback.rows[0]?.name || employeeName;
+      } else {
+        employeeName = uCheck.rows[0].name || employeeName;
+      }
+    } else {
+      const fallback = await client.query("SELECT id, name FROM users WHERE role IN ('superadmin', 'admin') ORDER BY id ASC LIMIT 1");
+      employeeId = fallback.rows[0]?.id || 1;
+      employeeName = fallback.rows[0]?.name || employeeName;
+    }
 
     if (!special_bidder_id) {
       return res.status(400).json({ success: false, message: 'Special Bidder profile must be selected' });
