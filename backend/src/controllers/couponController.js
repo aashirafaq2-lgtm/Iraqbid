@@ -207,6 +207,14 @@ export const CouponController = {
       let targetProductId = product_id || (targetOrder ? targetOrder.product_id : null);
 
       if (targetOrder) {
+        // Enforce: coupons can only be applied BEFORE shipping / delivery
+        const deliveryStatus = (targetOrder.delivery_status || targetOrder.status || '').toLowerCase();
+        if (deliveryStatus === 'delivered' || deliveryStatus === 'completed') {
+          return res.status(400).json({
+            success: false,
+            message: "Coupons cannot be applied to delivered orders"
+          });
+        }
         if (targetOrder.coupon_code) {
           return res.status(400).json({
             success: false,
@@ -217,7 +225,7 @@ export const CouponController = {
       } else if (product_id) {
         // Look up highest bid on product
         const pRes = await pool.query(
-          "SELECT current_bid, highest_bidder_id FROM products WHERE id = $1",
+          "SELECT current_bid, starting_bid, highest_bidder_id, seller_id FROM products WHERE id = $1",
           [product_id]
         );
         if (pRes.rows.length === 0) {
@@ -226,7 +234,36 @@ export const CouponController = {
         if (pRes.rows[0].highest_bidder_id !== userId) {
           return res.status(403).json({ success: false, message: "You did not win this product" });
         }
-        originalAmount = parseFloat(pRes.rows[0].current_bid);
+        originalAmount = parseFloat(pRes.rows[0].current_bid || pRes.rows[0].starting_bid || 0);
+
+        // If no order exists yet, create one in pending state
+        const discountPercent = parseFloat(coupon.discount_percentage);
+        let discountAmount = parseFloat(((originalAmount * discountPercent) / 100).toFixed(2));
+        if (coupon.max_discount_amount && parseFloat(coupon.max_discount_amount) > 0) {
+          const maxDisc = parseFloat(coupon.max_discount_amount);
+          if (discountAmount > maxDisc) discountAmount = maxDisc;
+        }
+        finalPrice = parseFloat((originalAmount - discountAmount).toFixed(2));
+
+        const orderNumber = 'ORD-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+        const orderRes = await pool.query(`
+          INSERT INTO orders (
+            order_number, product_id, buyer_id, seller_id, amount, final_price, original_amount,
+            discount_amount, coupon_code, shipping_cost, status, payment_status, delivery_status, created_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $5, $6, $7, $8, 0, 'pending', 'pending', 'pending', CURRENT_TIMESTAMP
+          ) RETURNING *;
+        `, [
+          orderNumber,
+          product_id,
+          userId,
+          pRes.rows[0].seller_id || 8,
+          finalPrice,
+          originalAmount,
+          discountAmount,
+          coupon.coupon_code
+        ]);
+        targetOrderId = orderRes.rows[0].id;
       } else {
         return res.status(400).json({ success: false, message: "Product or Order ID required" });
       }

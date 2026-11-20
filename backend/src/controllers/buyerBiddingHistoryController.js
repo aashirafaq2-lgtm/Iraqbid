@@ -19,6 +19,126 @@ export const BuyerBiddingHistoryController = {
       console.log("   Page:", page);
       console.log("   Limit:", limit);
 
+      // =========================================================================
+      // 🏆 SPECIALIZED WON QUERY (Includes won auctions AND Buy Now purchases)
+      // =========================================================================
+      if (status === 'won') {
+        const wonCountQuery = `
+          WITH user_won AS (
+            SELECT o.id FROM orders o WHERE o.buyer_id = $1
+            UNION ALL
+            SELECT p.id FROM products p
+            WHERE p.highest_bidder_id = $1
+              AND (p.auction_end_time <= NOW() OR p.status IN ('sold', 'ended'))
+              AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.product_id = p.id AND o.buyer_id = $1)
+          )
+          SELECT COUNT(*) as total FROM user_won;
+        `;
+        const countRes = await pool.query(wonCountQuery, [userId]);
+        const totalCount = parseInt(countRes.rows[0]?.total || 0);
+
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        const wonDataQuery = `
+          WITH user_won AS (
+            -- 1. All orders for this buyer (both Buy Now and won auctions)
+            SELECT 
+              o.id as order_id,
+              o.order_number,
+              o.product_id,
+              o.created_at as won_date,
+              COALESCE(o.original_amount, o.amount) as original_amount,
+              COALESCE(o.discount_amount, 0) as discount_amount,
+              COALESCE(o.final_price, o.amount) as final_price,
+              o.coupon_code,
+              COALESCE(o.delivery_status, o.status, 'pending') as order_status
+            FROM orders o
+            WHERE o.buyer_id = $1
+
+            UNION ALL
+
+            -- 2. Won auctions that do not have an order row in orders yet
+            SELECT 
+              NULL as order_id,
+              NULL as order_number,
+              p.id as product_id,
+              p.auction_end_time as won_date,
+              COALESCE(p.current_bid, p.starting_bid, 0) as original_amount,
+              0 as discount_amount,
+              COALESCE(p.current_bid, p.starting_bid, 0) as final_price,
+              NULL as coupon_code,
+              'pending' as order_status
+            FROM products p
+            WHERE p.highest_bidder_id = $1
+              AND (p.auction_end_time <= NOW() OR p.status IN ('sold', 'ended'))
+              AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.product_id = p.id AND o.buyer_id = $1)
+          )
+          SELECT 
+            uw.order_id as id,
+            COALESCE(uw.order_id, uw.product_id) as bid_id,
+            uw.product_id,
+            p.title as product_title,
+            p.image_url as product_image,
+            p.category_id,
+            c.name as category_name,
+            p.status as product_status,
+            p.auction_end_time,
+            uw.won_date as bid_date,
+            uw.won_date as created_at,
+            uw.original_amount as amount,
+            uw.original_amount,
+            uw.discount_amount,
+            uw.final_price,
+            uw.original_amount as current_highest_bid,
+            uw.coupon_code,
+            uw.order_status,
+            uw.order_status as delivery_status,
+            'won' as bid_status,
+            0 as hours_left,
+            uw.order_id,
+            uw.order_number,
+            COALESCE((SELECT COUNT(*) FROM bids WHERE product_id = p.id), 1) as total_bids
+          FROM user_won uw
+          JOIN products p ON p.id = uw.product_id
+          LEFT JOIN categories c ON c.id = p.category_id
+          ORDER BY uw.won_date DESC
+          LIMIT $2 OFFSET $3;
+        `;
+        const result = await pool.query(wonDataQuery, [userId, parseInt(limit), offset]);
+
+        const fixedData = fixImageUrlsInResponse(result.rows).map(bid => ({
+          ...bid,
+          amount: parseFloat(bid.amount) || 0,
+          current_highest_bid: bid.current_highest_bid ? parseFloat(bid.current_highest_bid) : null,
+          hours_left: 0,
+          original_amount: bid.original_amount ? parseFloat(bid.original_amount) : null,
+          discount_amount: bid.discount_amount ? parseFloat(bid.discount_amount) : 0,
+          final_price: bid.final_price ? parseFloat(bid.final_price) : null,
+          coupon_code: bid.coupon_code || null
+        }));
+
+        console.log(`🏆 [getBiddingHistory] Returning ${fixedData.length} won items for buyer #${userId}`);
+
+        return res.json({
+          success: true,
+          data: fixedData,
+          analytics: {
+            total_bids: totalCount,
+            total_amount_bid: fixedData.reduce((s, i) => s + (parseFloat(i.final_price || i.amount) || 0), 0),
+            active_bids: 0,
+            won_bids: totalCount,
+            lost_bids: 0,
+            ended_bids: totalCount,
+            win_rate: 100.0
+          },
+          pagination: {
+            total: totalCount,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: Math.ceil(totalCount / limit) || 1
+          }
+        });
+      }
+
       let query = `
         SELECT 
           b.id as bid_id,

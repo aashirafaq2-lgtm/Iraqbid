@@ -893,6 +893,16 @@ export const MobileProductController = {
         WHERE id = $3
       `, [buyerId, buyNowPrice, product.id]);
 
+      // Record winning bid in bids table as well for complete audit history
+      try {
+        await pool.query(`
+          INSERT INTO bids (product_id, user_id, amount, created_at)
+          VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        `, [product.id, buyerId, buyNowPrice]);
+      } catch (bErr) {
+        console.warn("Notice: could not insert Buy Now bid row into bids:", bErr.message);
+      }
+
       // 5. Update linked inventory_item if exists
       if (inventoryItemId) {
         await pool.query(
