@@ -658,6 +658,57 @@ export const AuthController = {
         return res.status(400).json({ success: false, message: "Invalid phone number format" });
       }
 
+      // 1. If LOGIN attempt: Verify that user actually exists and is not banned
+      if (type === 'login') {
+        const userCheck = await pool.query(
+          "SELECT id, name, status, is_banned FROM users WHERE phone = $1 OR phone = $2 OR phone = $3 LIMIT 1",
+          [normalizedPhone, normalizedPhone.replace('+964', '0'), normalizedPhone.replace('+', '')]
+        );
+
+        if (userCheck.rows.length === 0) {
+          console.warn(`⚠️ [LOGIN REJECTED] Unregistered phone attempted to login: ${normalizedPhone}`);
+          return res.status(404).json({
+            success: false,
+            code: "USER_NOT_FOUND",
+            message: "رقم الهاتف غير مسجل. يرجى إنشاء حساب جديد أولاً."
+          });
+        }
+
+        const user = userCheck.rows[0];
+        if (user.is_banned || user.status === 'blocked' || user.status === 'suspended') {
+          console.warn(`🚫 [LOGIN BLOCKED] Banned/Suspended user attempted login: ${normalizedPhone}`);
+          return res.status(403).json({
+            success: false,
+            code: "USER_BANNED",
+            message: "تم حظر هذا الحساب أو تعليقه من قبل الإدارة."
+          });
+        }
+      }
+
+      // 2. If SIGNUP / REGISTER attempt: Ensure user is NOT already registered
+      if (type === 'signup' || type === 'register') {
+        const userCheck = await pool.query(
+          "SELECT id, status, is_banned FROM users WHERE phone = $1 OR phone = $2 OR phone = $3 LIMIT 1",
+          [normalizedPhone, normalizedPhone.replace('+964', '0'), normalizedPhone.replace('+', '')]
+        );
+
+        if (userCheck.rows.length > 0) {
+          const user = userCheck.rows[0];
+          if (user.is_banned || user.status === 'blocked' || user.status === 'suspended') {
+            return res.status(403).json({
+              success: false,
+              code: "USER_BANNED",
+              message: "تم حظر هذا الحساب من قبل الإدارة."
+            });
+          }
+          return res.status(400).json({
+            success: false,
+            code: "USER_ALREADY_EXISTS",
+            message: "هذا الرقم مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك."
+          });
+        }
+      }
+
       // MAGIC NUMBERS FOR APP STORE REVIEW & SIMULATOR TESTING ONLY
       const magicNumbers = [
         '+9647500000000', '+964750000000', '+1234567890', '+964700000000',
@@ -753,12 +804,23 @@ export const AuthController = {
         [normalizedPhone, normalizedPhone.replace('+964', '0'), normalizedPhone.replace('+', '')]
       );
 
+      const requestType = req.body?.type;
       const providedName = (req.body?.name || req.body?.full_name || '').trim();
 
-      // If user doesn't exist yet, auto-create their account seamlessly (Works for BOTH Login & Signup!)
+      // If user doesn't exist yet:
       if (userResult.rows.length === 0) {
-        const userType = req.body?.type;
-        const defaultRole = (userType === 'seller') ? 'seller_products' : 'company_products';
+        // If this was a login request, strictly reject because account is NOT registered!
+        if (requestType === 'login') {
+          console.warn(`⚠️ [LOGIN REJECTED] Cannot login unregistered user: ${normalizedPhone}`);
+          return res.status(404).json({
+            success: false,
+            code: "USER_NOT_FOUND",
+            message: "الحساب غير مسجل. يرجى إنشاء حساب جديد أولاً."
+          });
+        }
+
+        // Only create new account when registering!
+        const defaultRole = (requestType === 'seller') ? 'seller_products' : 'company_products';
         const rawDigits = normalizedPhone.replace(/\D/g, '');
         const autoEmail = `user${rawDigits}@iraqbid.net`;
         const finalName = providedName || `User ${Math.floor(1000 + Math.random() * 9000)}`;
@@ -767,10 +829,19 @@ export const AuthController = {
           [finalName, autoEmail, normalizedPhone, defaultRole]
         );
         userResult.rows[0] = newUser.rows[0];
-        console.log(`✨ [AUTH] Auto-created user account with name "${finalName}" on OTP verification for ${normalizedPhone}`);
+        console.log(`✨ [AUTH] Registered new account: "${finalName}" for ${normalizedPhone}`);
       } else {
-        // User already exists in DB - if name was provided and existing name is default/generic, update it!
+        // User already exists in DB! Check if banned / suspended:
         const existing = userResult.rows[0];
+        if (existing.is_banned || existing.status === 'blocked' || existing.status === 'suspended') {
+          return res.status(403).json({
+            success: false,
+            code: "USER_BANNED",
+            message: "تم حظر هذا الحساب أو تعليقه من قبل الإدارة."
+          });
+        }
+
+        // If name was provided and existing name is default/generic, update it!
         if (providedName && (existing.name === 'New User' || /^User\s*\d*$/i.test(existing.name))) {
           const upd = await pool.query(
             "UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
