@@ -602,7 +602,10 @@ export const AuthController = {
       }
 
       const providedName = (name || '').trim();
-      const initialName = providedName || `User ${Math.floor(1000 + Math.random() * 9000)}`;
+      if (!providedName) {
+        return res.status(400).json({ success: false, code: 'NAME_REQUIRED', message: 'Full name is required to register.' });
+      }
+      const initialName = providedName;
 
       await pool.query(
         "INSERT INTO users (name, phone, role, status, is_verified) VALUES ($1, $2, 'buyer', 'pending', false)",
@@ -778,11 +781,7 @@ export const AuthController = {
         );
         otpValid = otpResult.rows.length > 0;
 
-        // Emergency developer fallback for testing/QA if SMS gateway experiences delay:
-        if (!otpValid && otp === '123456') {
-          console.log(`⚠️ [FALLBACK] Universal test code 123456 accepted for ${normalizedPhone}`);
-          otpValid = true;
-        }
+        // [REMOVED] Emergency 123456 fallback has been disabled for production security
       }
 
       if (!otpValid) {
@@ -823,7 +822,16 @@ export const AuthController = {
         const defaultRole = (requestType === 'seller') ? 'seller_products' : 'company_products';
         const rawDigits = normalizedPhone.replace(/\D/g, '');
         const autoEmail = `user${rawDigits}@iraqbid.net`;
-        const finalName = providedName || `User ${Math.floor(1000 + Math.random() * 9000)}`;
+        // Name is required; if not provided, use phone-based fallback (never random User XXXX)
+        if (!providedName && requestType !== 'login') {
+          return res.status(400).json({
+            success: false,
+            code: 'NAME_REQUIRED',
+            message: 'Full name is required to create an account.'
+          });
+        }
+        const rawPhone = normalizedPhone.replace(/\D/g, '');
+        const finalName = providedName || `User${rawPhone.slice(-4)}`;
         const newUser = await pool.query(
           "INSERT INTO users (name, email, phone, role, status, is_verified, created_at) VALUES ($1, $2, $3, $4, 'approved', true, CURRENT_TIMESTAMP) RETURNING *",
           [finalName, autoEmail, normalizedPhone, defaultRole]
