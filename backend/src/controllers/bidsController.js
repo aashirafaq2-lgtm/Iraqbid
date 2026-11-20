@@ -366,25 +366,63 @@ export const BidsController = {
   async getMyBids(req, res) {
     try {
       const userId = req.user.id;
+      const { status } = req.query;
 
-      const result = await pool.query(
-        `SELECT 
-          b.*,
-          p.title as product_title,
-          p.image_url as product_image,
-          p.status as product_status,
-          p.auction_end_time,
-          EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
-          CASE 
-            WHEN p.auction_end_time > NOW() THEN 'live'
-            ELSE 'ended'
-          END as auction_status
-        FROM bids b
-        LEFT JOIN products p ON b.product_id = p.id
-        WHERE b.user_id = $1
-        ORDER BY b.created_at DESC`,
-        [userId]
-      );
+      let query;
+      const params = [userId];
+
+      if (status === 'all' || status === 'history') {
+        // Return full bidding history
+        query = `
+          SELECT 
+            b.*,
+            p.title as product_title,
+            p.image_url as product_image,
+            p.status as product_status,
+            p.auction_end_time,
+            EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
+            CASE 
+              WHEN p.auction_end_time > NOW() AND p.status IN ('approved', 'active') THEN 'live'
+              ELSE 'ended'
+            END as auction_status
+          FROM bids b
+          LEFT JOIN products p ON b.product_id = p.id
+          WHERE b.user_id = $1
+          ORDER BY b.created_at DESC
+        `;
+      } else {
+        // Default for Mobile App Bids screen: ONLY active, live auctions that have NOT finished!
+        // Finished auctions (00h 00m 00s, ended, sold) must be gone from active bids!
+        query = `
+          SELECT * FROM (
+            SELECT DISTINCT ON (b.product_id)
+              b.id,
+              b.product_id,
+              b.user_id,
+              b.amount,
+              b.created_at,
+              b.is_special_bid,
+              p.title as product_title,
+              p.image_url as product_image,
+              p.status as product_status,
+              p.auction_end_time,
+              p.current_bid as product_current_bid,
+              p.highest_bidder_id as product_highest_bidder_id,
+              EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
+              'live' as auction_status
+            FROM bids b
+            JOIN products p ON b.product_id = p.id
+            WHERE b.user_id = $1
+              AND p.status IN ('approved', 'active')
+              AND p.auction_end_time IS NOT NULL
+              AND p.auction_end_time > NOW()
+            ORDER BY b.product_id, b.created_at DESC
+          ) sub
+          ORDER BY sub.created_at DESC
+        `;
+      }
+
+      const result = await pool.query(query, params);
 
       // Fix invalid image URLs in response
       const fixedData = fixImageUrlsInResponse(result.rows);
