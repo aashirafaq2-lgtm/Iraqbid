@@ -332,6 +332,7 @@ export const MobileProductController = {
         WHERE (p.status = 'approved' OR p.status = 'active')
           AND p.auction_end_time IS NOT NULL
           AND p.auction_end_time > NOW()
+          AND COALESCE(p.is_vip, false) = false
       `;
       const params = [];
       let paramCount = 1;
@@ -370,6 +371,7 @@ export const MobileProductController = {
         WHERE (p.status = 'approved' OR p.status = 'active')
           AND p.auction_end_time IS NOT NULL
           AND p.auction_end_time > NOW()
+          AND COALESCE(p.is_vip, false) = false
       `;
       const countParams = [];
       let countParamCount = 1;

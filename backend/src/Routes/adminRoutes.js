@@ -52,14 +52,18 @@ router.post("/users", authorizeRoles("superadmin", "admin"), AdminController.cre
 router.put("/users/:id/change-admin-phone", authorizeRoles("superadmin", "admin"), AdminController.changeAdminPhone);
 // PUT /users/:id - superadmin, admin, manager, moderator
 router.put("/users/:id", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.updateUser);
-// DELETE /users/:id - superadmin only
-router.delete("/users/:id", authorizeRoles("superadmin"), AdminController.deleteUser);
+// DELETE /users/:id - superadmin, admin
+router.delete("/users/:id", authorizeRoles("superadmin", "admin"), AdminController.deleteUser);
+// PATCH /users/:id/strikes - superadmin, admin, manager, moderator
+router.patch("/users/:id/strikes", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.adjustUserStrikes);
 // PUT /users/:id/role - superadmin only
 router.put("/users/:id/role", authorizeRoles("superadmin"), AdminController.updateUserRole);
 // PATCH /users/approve/:id - superadmin, admin, manager, moderator
 router.patch("/users/approve/:id", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.approveUser);
 // PATCH /users/block/:id - superadmin, admin, manager, moderator
 router.patch("/users/block/:id", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.blockUser);
+// PATCH /users/:id/toggle-vip - superadmin, admin, moderator (Authorize VIP Bidders)
+router.patch("/users/:id/toggle-vip", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.toggleVipBidder);
 // PATCH /users/verify/:id - superadmin, admin, manager, moderator
 router.patch("/users/verify/:id", authorizeRoles("superadmin", "admin", "manager", "moderator"), AdminController.verifyUser);
 

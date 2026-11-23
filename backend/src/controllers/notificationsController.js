@@ -210,6 +210,34 @@ export const NotificationsController = {
     }
   },
 
+  // POST /api/notifications/broadcast (Admin broadcast to all users)
+  async broadcastNotification(req, res) {
+    try {
+      const { title, message, type = 'system' } = req.body;
+      if (!title || !message) {
+        return res.status(400).json({ success: false, message: 'Title and message are required' });
+      }
+
+      // Insert notification for all active/registered users
+      const insertResult = await pool.query(`
+        INSERT INTO notifications (user_id, title, message, type, is_read, read, created_at)
+        SELECT id, $1, $2, $3, false, false, NOW()
+        FROM users
+        WHERE status IN ('approved', 'active') OR role != 'admin'
+        RETURNING id;
+      `, [title, message, type]);
+
+      res.json({
+        success: true,
+        message: `Broadcast notification sent to ${insertResult.rowCount} users successfully`,
+        count: insertResult.rowCount
+      });
+    } catch (error) {
+      console.error('Error broadcasting notification:', error);
+      res.status(500).json({ success: false, message: 'Internal server error: ' + error.message });
+    }
+  },
+
   // GET /api/notifications/settings
   async getSettings(req, res) {
     try {

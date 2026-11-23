@@ -6,7 +6,7 @@ import {
   Plus, Search, RefreshCw, AlertTriangle, CheckCircle, XCircle,
   DollarSign, Download, ArrowUpRight, LogOut, ChevronRight, Menu, X,
   FileSpreadsheet, FileText, Check, Layers, ScanLine, Eye, Ban, UserCheck, TrendingUp, Lock, UserPlus, Key,
-  Upload, Image as ImageIcon, Camera, Trash2, ExternalLink, Bot, Sliders, ChevronDown, Tag, Percent, Award, Calendar, Edit2
+  Upload, Image as ImageIcon, Camera, Trash2, ExternalLink, Bot, Sliders, ChevronDown, Tag, Percent, Award, Calendar, Edit2, Edit, Send, Shield, Headphones, Bell, Save
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -18,6 +18,7 @@ const API_ADMIN = '/api/admin';
 const API_UPLOADS = '/api/uploads';
 const API_COUPONS = '/api/coupons';
 const API_SPECIAL_BIDDERS = '/api/special-bidders';
+const API_NOTIFICATIONS = '/api/notifications';
 
 const resolveImageUrl = (img) => {
   if (!img) return 'https://placehold.co/300x200/1e293b/white?text=Iraq+Bid';
@@ -95,6 +96,20 @@ export default function App() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [editingInventoryItem, setEditingInventoryItem] = useState(null);
+  const [editInventoryForm, setEditInventoryForm] = useState({
+    product_name: '',
+    original_retail_price: '',
+    starting_bid_price: '',
+    buy_now_price: '',
+    actual_acquisition_cost: '',
+    condition: 'New',
+    defect_alert: 'Clear',
+    defect_details: '',
+    warehouse_location: '',
+    description: ''
+  });
+  const [editInventoryLoading, setEditInventoryLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [categoriesList, setCategoriesList] = useState([]);
   const fileInputRef = useRef(null);
@@ -159,8 +174,35 @@ export default function App() {
   // --- 7. STAFF & CUSTOM PERMISSIONS STATE ---
   const [staffList, setStaffList] = useState([]);
   const [showStaffModal, setShowStaffModal] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', phone: '', role: 'editor' });
+  const [newStaff, setNewStaff] = useState({ name: '', username: '', email: '', password: '', phone: '', role: 'employee' });
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [showEditStaffModal, setShowEditStaffModal] = useState(false);
   const [staffLoading, setStaffLoading] = useState(false);
+  const [newStaffPermissions, setNewStaffPermissions] = useState([
+    { module: 'dashboard', label: '1. Dashboard', icon: 'LayoutDashboard', checked: true, level: 'view' },
+    { module: 'inventory', label: '2. Inventory Management', icon: 'Package', checked: true, level: 'full' },
+    { module: 'barcodes', label: '3. Barcode Management', icon: 'Barcode', checked: false, level: '' },
+    { module: 'auctions', label: '4. Auction Management', icon: 'Gavel', checked: false, level: '' },
+    {
+      module: 'customers', label: '5. Customers', icon: 'Users', checked: true, isGroup: true,
+      children: [
+        { module: 'customers_list', label: 'Customers & Statistics', checked: true, level: 'full' },
+        { module: 'special_bidders', label: 'Special Bidders', checked: false, level: '' },
+        { module: 'daily_challenge', label: 'Daily Challenge & Referrals', checked: false, level: '' },
+      ]
+    },
+    { module: 'orders', label: '6. Winners & Orders', icon: 'ShoppingBag', checked: false, level: '' },
+    { module: 'shipping', label: '7. Shipping Management', icon: 'Truck', checked: true, level: 'full' },
+    { module: 'labels', label: '8. Customer Order Labels', icon: 'Printer', checked: false, level: '' },
+    { module: 'audit', label: '9. Stock Audit', icon: 'ClipboardCheck', checked: false, level: '' },
+    { module: 'staff', label: '10. Employees & Permissions', icon: 'Key', checked: false, level: '' },
+    { module: 'reports', label: '11. Reports Hub', icon: 'FileSpreadsheet', checked: false, level: '' },
+    { module: 'coupons', label: '12. Coupons Management', icon: 'Tag', checked: false, level: '' },
+    { module: 'logs', label: '13. Activity Log', icon: 'History', checked: false, level: '' },
+    { module: 'banners', label: '14. Mobile Slideshow & Banners', icon: 'ImageIcon', checked: false, level: '' },
+    { module: 'settings', label: '15. System Settings', icon: 'Settings', checked: false, level: '' },
+    { module: 'notifications', label: '16. Push Notifications', icon: 'Bell', checked: true, level: 'full' }
+  ]);
   const [selectedEmployeePerms, setSelectedEmployeePerms] = useState(null);
   const [showPermsModal, setShowPermsModal] = useState(false);
 
@@ -170,6 +212,17 @@ export default function App() {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [pendingProducts, setPendingProducts] = useState([]);
   const [customerSubTab, setCustomerSubTab] = useState('customers'); // 'customers' | 'special_bidders'
+  const [staffSubTab, setStaffSubTab] = useState('list'); // 'list' | 'add'
+  const [staffMenuExpanded, setStaffMenuExpanded] = useState(true);
+  const [customersMenuExpanded, setCustomersMenuExpanded] = useState(true);
+  // Edit Customer Modal State
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [editCustomerForm, setEditCustomerForm] = useState({ name: '', phone: '', address: '', city: '' });
+  const [editCustomerLoading, setEditCustomerLoading] = useState(false);
+  // Broadcast Notification Modal State
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [customerBroadcastForm, setCustomerBroadcastForm] = useState({ title: '', message: '', type: 'system' });
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
 
   // --- SPECIAL BIDDERS MANAGEMENT STATE ---
   const [specialBiddersList, setSpecialBiddersList] = useState([]);
@@ -197,6 +250,66 @@ export default function App() {
     default_shipping_cost_usd: '5.00'
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
+
+  // --- 16. PUSH NOTIFICATIONS MANAGEMENT ---
+  const [pushBroadcastForm, setPushBroadcastForm] = useState({
+    title: '',
+    message: '',
+    image_url: '',
+    destination_screen: 'home',
+    related_id: ''
+  });
+  const [pushSending, setPushSending] = useState(false);
+  const [pushHistory, setPushHistory] = useState([]);
+  const [pushHistoryLoading, setPushHistoryLoading] = useState(false);
+  const [pushActiveTab, setPushActiveTab] = useState('create'); // 'create' | 'history'
+
+  const fetchPushHistory = async () => {
+    setPushHistoryLoading(true);
+    try {
+      const res = await axios.get(`${API_NOTIFICATIONS}/broadcast-history?limit=50`);
+      if (res.data.success) {
+        setPushHistory(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching push history:', err);
+    } finally {
+      setPushHistoryLoading(false);
+    }
+  };
+
+  const handleSendPushBroadcast = async (e) => {
+    e.preventDefault();
+    if (!pushBroadcastForm.title.trim() || !pushBroadcastForm.message.trim()) {
+      alert('Please provide both notification title and message');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to send this push notification to ALL registered app users?`)) {
+      return;
+    }
+    setPushSending(true);
+    try {
+      const res = await axios.post(`${API_NOTIFICATIONS}/broadcast`, broadcastForm);
+      if (res.data.success) {
+        alert(`✅ Push Notification dispatched successfully to all users!`);
+        setPushBroadcastForm({
+          title: '',
+          message: '',
+          image_url: '',
+          destination_screen: 'home',
+          related_id: ''
+        });
+        fetchPushHistory();
+        setPushActiveTab('history');
+      } else {
+        alert(res.data.message || 'Failed to dispatch notification');
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.message || err.message);
+    } finally {
+      setPushSending(false);
+    }
+  };
   const [autoBidsHistory, setAutoBidsHistory] = useState([]);
 
   // --- 10. AUDIT TRAIL LOGS ---
@@ -777,6 +890,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (authToken && activeTab === 'users' && customerSubTab === 'customers') {
+      fetchUsers();
+    }
+  }, [activeTab, customerSubTab, userSearch, userRoleFilter, authToken]);
+
+  useEffect(() => {
     if (authToken) fetchInventory();
   }, [inventoryFilter, inventorySearch]);
 
@@ -1166,6 +1285,58 @@ export default function App() {
   };
 
   // --- SYSTEM SETTINGS SAVE ---
+  const handleCreateEmployee = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setStaffLoading(true);
+    try {
+      const permissionsPayload = [];
+      newStaffPermissions.forEach(item => {
+        if (item.isGroup && item.children) {
+          item.children.forEach(c => {
+            if (c.checked) {
+              permissionsPayload.push({
+                module: c.module,
+                can_view: true,
+                can_create: c.level === 'full',
+                can_edit: c.level === 'full' || c.level === 'edit',
+                can_delete: c.level === 'full',
+                can_approve: c.level === 'full',
+                permission_level: c.level
+              });
+            }
+          });
+        } else if (item.checked) {
+          permissionsPayload.push({
+            module: item.module,
+            can_view: true,
+            can_create: item.level === 'full',
+            can_edit: item.level === 'full' || item.level === 'edit',
+            can_delete: item.level === 'full',
+            can_approve: item.level === 'full',
+            permission_level: item.level
+          });
+        }
+      });
+
+      const res = await axios.post(`${API_ADMIN}/staff`, {
+        ...newStaff,
+        permissions: permissionsPayload
+      });
+
+      if (res.data.success) {
+        alert(res.data.message || 'Employee created successfully');
+        setShowStaffModal(false);
+        setNewStaff({ name: '', username: '', email: '', password: '', phone: '', role: 'employee' });
+        setStaffSubTab('list');
+        fetchStaff();
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to create employee');
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     setSettingsLoading(true);
@@ -1432,7 +1603,7 @@ export default function App() {
   const canAccessCRM = ['superadmin', 'admin'].includes(userRole);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#060913', color: '#f1f5f9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'transparent', color: '#f1f5f9', fontFamily: 'Plus Jakarta Sans, sans-serif', position: 'relative' }}>
       
       {/* Mobile Backdrop Overlay */}
       {sidebarOpen && (
@@ -1448,24 +1619,40 @@ export default function App() {
         style={{
           width: sidebarOpen ? '280px' : '76px',
           minWidth: sidebarOpen ? '280px' : '76px',
-          backgroundColor: '#0a0f1d',
-          borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(10, 15, 29, 0.7)',
+          backdropFilter: 'blur(24px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+          borderRight: '1px solid rgba(255, 255, 255, 0.09)',
           display: 'flex',
           flexDirection: 'column',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           padding: '20px 12px',
-          boxShadow: '4px 0 24px rgba(0,0,0,0.5)',
+          boxShadow: '4px 0 32px rgba(0,0,0,0.6)',
           zIndex: 50
         }}
       >
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {sidebarOpen && (
-            <div>
-              <div style={{ fontSize: '20px', fontWeight: '800', background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '0.5px' }}>
-                IRAQ BID
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(234, 88, 12, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#f97316'
+              }}>
+                <Gavel size={22} />
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', marginTop: '2px' }}>Enterprise Operations ERP</div>
+              <div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#f8fafc', letterSpacing: '0.5px' }}>
+                  IRAQ <span style={{ color: '#f97316' }}>BID</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', marginTop: '1px' }}>Enterprise Operations ERP</div>
+              </div>
             </div>
           )}
           <button 
@@ -1475,77 +1662,578 @@ export default function App() {
           </button>
         </div>
 
-        {/* 13 Complete Navigation Links */}
+        {/* Navigation Links */}
         <div style={{ flex: 1, marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
           
           {sidebarOpen && <div style={{ fontSize: '10px', fontWeight: '700', color: '#475569', padding: '8px 12px 4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Core Operations</div>}
 
-          {[
-            ...(canAccessOps ? [{ id: 'dashboard', label: '1. Dashboard', icon: <LayoutDashboard size={18} /> }] : []),
-            { id: 'inventory', label: '2. Inventory Management', icon: <Package size={18} /> },
-            { id: 'barcodes', label: '3. Barcode Management', icon: <Barcode size={18} /> },
-            ...(canAccessOps ? [{ id: 'live_auctions', label: '4. Auction Management', icon: <Gavel size={18} /> }] : []),
-            ...(canAccessCRM ? [
-              { id: 'users', label: '5. Customers', icon: <Users size={18} />, subTab: 'customers' },
-              { id: 'special_bidders_menu', label: '  ↳ Special Bidders', icon: <Bot size={16} />, subTab: 'special_bidders' },
-              { id: 'challenge_referrals_menu', label: '  ↳ Daily Challenge & Referrals', icon: <Award size={16} />, subTab: 'challenge_referrals' },
-            ] : []),
-            ...(canAccessOps ? [{ id: 'orders', label: '6. Winners & Orders', icon: <ShoppingBag size={18} /> }] : []),
-            ...(canAccessOps ? [{ id: 'shipping', label: '7. Shipping Management', icon: <Truck size={18} /> }] : []),
-            ...(canAccessOps ? [{ id: 'labels', label: '8. Customer Order Labels', icon: <Printer size={18} /> }] : []),
-            ...(canAccessOps ? [{ id: 'audit', label: '9. Stock Audit', icon: <ClipboardCheck size={18} /> }] : []),
-            ...(canAccessStaff ? [{ id: 'staff', label: '10. Employees & Permissions', icon: <Key size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'reports', label: '11. Reports Hub', icon: <FileSpreadsheet size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'coupons', label: '12. Coupons Management', icon: <Tag size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'logs', label: '13. Activity Log', icon: <History size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'banners', label: '14. Mobile Slideshow & Banners', icon: <ImageIcon size={18} /> }] : []),
-            ...(canAccessCRM ? [{ id: 'settings', label: '15. System Settings', icon: <Settings size={18} /> }] : [])
-          ].map(item => {
-            const isItemActive = item.subTab
-              ? (activeTab === 'users' && customerSubTab === item.subTab)
-              : (item.id === 'users' ? (activeTab === 'users' && customerSubTab === 'customers') : activeTab === item.id);
-            return (
+          {/* 1. Dashboard */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'dashboard' ? '#6366f1' : 'transparent',
+                color: activeTab === 'dashboard' ? '#ffffff' : '#94a3b8',
+                fontWeight: activeTab === 'dashboard' ? '700' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <LayoutDashboard size={18} />
+              {sidebarOpen && <span>1. Dashboard</span>}
+            </button>
+          )}
+
+          {/* 2. Inventory Management */}
+          <button
+            onClick={() => setActiveTab('inventory')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '11px 14px',
+              borderRadius: '10px',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              backgroundColor: activeTab === 'inventory' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+              color: activeTab === 'inventory' ? '#38bdf8' : '#94a3b8',
+              fontWeight: activeTab === 'inventory' ? '600' : '500',
+              fontSize: '13px'
+            }}
+          >
+            <Package size={18} />
+            {sidebarOpen && <span>2. Inventory Management</span>}
+          </button>
+
+          {/* 3. Barcode Management */}
+          <button
+            onClick={() => setActiveTab('barcodes')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '11px 14px',
+              borderRadius: '10px',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              backgroundColor: activeTab === 'barcodes' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+              color: activeTab === 'barcodes' ? '#38bdf8' : '#94a3b8',
+              fontWeight: activeTab === 'barcodes' ? '600' : '500',
+              fontSize: '13px'
+            }}
+          >
+            <Barcode size={18} />
+            {sidebarOpen && <span>3. Barcode Management</span>}
+          </button>
+
+          {/* 4. Auction Management */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('live_auctions')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'live_auctions' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'live_auctions' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'live_auctions' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Gavel size={18} />
+              {sidebarOpen && <span>4. Auction Management</span>}
+            </button>
+          )}
+
+          {/* 5. Customers with Expandable Sub-items (Exact Screenshot Design) */}
+          {canAccessCRM && (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               <button
-                key={item.id}
                 onClick={() => {
-                  if (item.subTab) {
-                    setActiveTab('users');
-                    setCustomerSubTab(item.subTab);
-                    if (item.subTab === 'challenge_referrals') fetchReferralsData();
-                    if (item.subTab === 'special_bidders') {
-                      fetchSpecialBidders();
-                      fetchSpecialBidsHistory();
-                      fetchLiveAuctions();
-                    }
-                  } else {
-                    setActiveTab(item.id);
-                    if (item.id === 'users') {
-                      setCustomerSubTab('customers');
-                    }
-                  }
+                  setActiveTab('users');
+                  setCustomersMenuExpanded(!customersMenuExpanded);
                 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px',
-                  padding: item.subTab ? '8px 14px 8px 24px' : '11px 14px',
+                  justifyContent: 'space-between',
+                  padding: '11px 14px',
                   borderRadius: '10px',
                   border: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  backgroundColor: isItemActive ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
-                  color: isItemActive ? '#38bdf8' : '#94a3b8',
-                  fontWeight: isItemActive ? '600' : '500',
-                  fontSize: item.subTab ? '12px' : '13px',
-                  borderLeft: isItemActive ? '3px solid #38bdf8' : '3px solid transparent'
+                  backgroundColor: activeTab === 'users' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                  color: activeTab === 'users' ? '#38bdf8' : '#94a3b8',
+                  fontWeight: activeTab === 'users' ? '600' : '500',
+                  fontSize: '13px'
                 }}
               >
-                {item.icon}
-                {sidebarOpen && <span>{item.label}</span>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Users size={18} />
+                  {sidebarOpen && <span>5. Customers</span>}
+                </div>
+                {sidebarOpen && (
+                  <ChevronDown size={15} style={{ transform: customersMenuExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                )}
               </button>
-            );
-          })}
+
+              {/* Sub items matching screenshot */}
+              {sidebarOpen && customersMenuExpanded && (
+                <div style={{ marginLeft: '32px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1px solid rgba(255,255,255,0.08)', paddingLeft: '8px' }}>
+                  <button
+                    onClick={() => {
+                      setActiveTab('users');
+                      setCustomerSubTab('customers');
+                      fetchUsers();
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: (activeTab === 'users' && customerSubTab === 'customers') ? '#38bdf8' : '#94a3b8',
+                      fontWeight: (activeTab === 'users' && customerSubTab === 'customers') ? '700' : '500'
+                    }}
+                  >
+                    Customers & Statistics
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('users');
+                      setCustomerSubTab('special_bidders');
+                      fetchSpecialBidders();
+                      fetchSpecialBidsHistory();
+                      fetchLiveAuctions();
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: (activeTab === 'users' && customerSubTab === 'special_bidders') ? '#38bdf8' : '#94a3b8',
+                      fontWeight: (activeTab === 'users' && customerSubTab === 'special_bidders') ? '700' : '500'
+                    }}
+                  >
+                    Special Bidders
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('users');
+                      setCustomerSubTab('challenge_referrals');
+                      fetchReferralsData();
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: (activeTab === 'users' && customerSubTab === 'challenge_referrals') ? '#38bdf8' : '#94a3b8',
+                      fontWeight: (activeTab === 'users' && customerSubTab === 'challenge_referrals') ? '700' : '500'
+                    }}
+                  >
+                    Daily Challenge & Referrals
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 6. Winners & Orders */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('orders')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'orders' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'orders' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'orders' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Award size={18} />
+              {sidebarOpen && <span>6. Winners & Orders</span>}
+            </button>
+          )}
+
+          {/* 7. Shipping Management */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('shipping')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'shipping' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'shipping' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'shipping' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Truck size={18} />
+              {sidebarOpen && <span>7. Shipping Management</span>}
+            </button>
+          )}
+
+          {/* 8. Customer Order Labels */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('labels')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'labels' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'labels' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'labels' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Tag size={18} />
+              {sidebarOpen && <span>8. Customer Order Labels</span>}
+            </button>
+          )}
+
+          {/* 9. Stock Audit */}
+          {canAccessOps && (
+            <button
+              onClick={() => setActiveTab('audit')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'audit' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'audit' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'audit' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Calendar size={18} />
+              {sidebarOpen && <span>9. Stock Audit</span>}
+            </button>
+          )}
+
+          {/* 10. Employees & Permissions */}
+          {canAccessStaff && (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <button
+                onClick={() => {
+                  setActiveTab('staff');
+                  setStaffMenuExpanded(!staffMenuExpanded);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  backgroundColor: activeTab === 'staff' ? 'rgba(99, 102, 241, 0.16)' : 'transparent',
+                  color: activeTab === 'staff' ? '#818cf8' : '#94a3b8',
+                  fontWeight: activeTab === 'staff' ? '600' : '500',
+                  fontSize: '13px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Key size={18} />
+                  {sidebarOpen && <span>10. Employees & Permissions</span>}
+                </div>
+                {sidebarOpen && (
+                  <ChevronDown size={15} style={{ transform: staffMenuExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                )}
+              </button>
+
+              {/* Sub items for Employees & Permissions */}
+              {sidebarOpen && staffMenuExpanded && (
+                <div style={{ marginLeft: '32px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1px solid rgba(255,255,255,0.08)', paddingLeft: '8px' }}>
+                  <button
+                    onClick={() => {
+                      setActiveTab('staff');
+                      setStaffSubTab('list');
+                      fetchStaff();
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: (activeTab === 'staff' && staffSubTab === 'list') ? '#38bdf8' : '#94a3b8',
+                      fontWeight: (activeTab === 'staff' && staffSubTab === 'list') ? '700' : '500'
+                    }}
+                  >
+                    Employees List
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('staff');
+                      setStaffSubTab('add');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: (activeTab === 'staff' && staffSubTab === 'add') ? '#f97316' : '#94a3b8',
+                      fontWeight: (activeTab === 'staff' && staffSubTab === 'add') ? '700' : '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <UserPlus size={13} /> Add Employee
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 11. Reports Hub */}
+          {canAccessCRM && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'reports' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'reports' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'reports' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <FileSpreadsheet size={18} />
+              {sidebarOpen && <span>11. Reports Hub</span>}
+            </button>
+          )}
+
+          {/* 12. Coupons Management */}
+          {canAccessCRM && (
+            <button
+              onClick={() => setActiveTab('coupons')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'coupons' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'coupons' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'coupons' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Tag size={18} />
+              {sidebarOpen && <span>12. Coupons Management</span>}
+            </button>
+          )}
+
+          {/* 13. Activity Log */}
+          {canAccessCRM && (
+            <button
+              onClick={() => setActiveTab('logs')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'logs' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'logs' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'logs' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <History size={18} />
+              {sidebarOpen && <span>13. Activity Log</span>}
+            </button>
+          )}
+
+          {/* 14. Mobile Slideshow & Banners */}
+          {canAccessCRM && (
+            <button
+              onClick={() => setActiveTab('banners')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'banners' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'banners' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'banners' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <ImageIcon size={18} />
+              {sidebarOpen && <span>14. Mobile Slideshow & Banners</span>}
+            </button>
+          )}
+
+          {/* 15. System Settings */}
+          {canAccessCRM && (
+            <button
+              onClick={() => setActiveTab('settings')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'settings' ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                color: activeTab === 'settings' ? '#38bdf8' : '#94a3b8',
+                fontWeight: activeTab === 'settings' ? '600' : '500',
+                fontSize: '13px'
+              }}
+            >
+              <Settings size={18} />
+              {sidebarOpen && <span>15. System Settings</span>}
+            </button>
+          )}
+
+          {/* 16. Push Notifications (FCM Global Broadcast) */}
+          {canAccessCRM && (
+            <button
+              onClick={() => {
+                setActiveTab('push_notifications');
+                fetchPushHistory();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                backgroundColor: activeTab === 'push_notifications' ? '#ea580c' : 'transparent',
+                backgroundImage: activeTab === 'push_notifications' ? 'linear-gradient(to right, #ea580c, #f97316)' : 'none',
+                color: activeTab === 'push_notifications' ? '#ffffff' : '#94a3b8',
+                fontWeight: activeTab === 'push_notifications' ? '700' : '500',
+                fontSize: '13px',
+                boxShadow: activeTab === 'push_notifications' ? '0 4px 14px rgba(234, 88, 12, 0.35)' : 'none'
+              }}
+            >
+              <Bell size={18} />
+              {sidebarOpen && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                  <span>16. Push Notifications</span>
+                  <span style={{ fontSize: '10px', backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>FCM</span>
+                </div>
+              )}
+            </button>
+          )}
         </div>
+
+        {/* Need Help? Contact Support Card (Exact Reference Design) */}
+        {sidebarOpen && (
+          <div style={{
+            padding: '14px 16px',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '14px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            marginTop: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+          onClick={() => window.open('https://t.me/iraqbid_support', '_blank')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#818cf8'
+              }}>
+                <Headphones size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#f8fafc' }}>Need Help?</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>Contact Support</div>
+              </div>
+            </div>
+            <ChevronRight size={16} color="#64748b" />
+          </div>
+        )}
 
         {/* User Card */}
         <div style={{
@@ -1597,9 +2285,11 @@ export default function App() {
         {/* HEADER BAR */}
         <header style={{
           height: '64px',
-          backgroundColor: 'rgba(10, 15, 29, 0.85)',
-          backdropFilter: 'blur(16px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(10, 15, 29, 0.65)',
+          backdropFilter: 'blur(24px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.09)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1646,6 +2336,50 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.1)', padding: '6px 14px', borderRadius: '20px', border: '1px solid rgba(34, 197, 94, 0.25)' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
               Live DB Synced (1 USD = {systemSettings.exchange_rate_usd_iqd || '1,520'} IQD)
+            </div>
+
+            {/* Notification Bell Badge */}
+            <div style={{ position: 'relative', cursor: 'pointer', padding: '6px' }}>
+              <Bell size={20} color="#94a3b8" />
+              <span style={{
+                position: 'absolute',
+                top: '2px',
+                right: '2px',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                fontSize: '10px',
+                fontWeight: '800',
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #0a0f1d'
+              }}>
+                3
+              </span>
+            </div>
+
+            {/* User Profile Pill Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.06)', padding: '4px 12px 4px 6px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                backgroundColor: '#4f46e5',
+                color: '#ffffff',
+                fontSize: '13px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {(currentUser?.name || 'A')[0].toUpperCase()}
+              </div>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: '#f1f5f9' }}>
+                {currentUser?.name || 'Admin'}
+              </span>
             </div>
           </div>
         </header>
@@ -1858,24 +2592,49 @@ export default function App() {
                           <td style={{ padding: '14px 20px', color: '#94a3b8' }}>{item.warehouse_location || 'Slot A-01'}</td>
                           {canAccessOps && (
                             <td style={{ padding: '14px 20px' }}>
-                              {item.status === 'available' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {/* Edit Product Details Button */}
                                 <button
-                                  onClick={() => handlePublishAuction(item)}
-                                  style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
-                                  Publish Auction
+                                  title="Edit Product Details"
+                                  onClick={() => {
+                                    setEditingInventoryItem(item);
+                                    setEditInventoryForm({
+                                      product_name: item.product_name || '',
+                                      original_retail_price: item.original_retail_price || '',
+                                      starting_bid_price: item.starting_bid_price || '',
+                                      buy_now_price: item.buy_now_price || '',
+                                      actual_acquisition_cost: item.actual_acquisition_cost || '',
+                                      condition: item.condition || 'New',
+                                      defect_alert: item.defect_alert || 'Clear',
+                                      defect_details: item.defect_details || '',
+                                      warehouse_location: item.warehouse_location || 'Slot A-01',
+                                      description: item.description || ''
+                                    });
+                                  }}
+                                  style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', color: '#38bdf8', padding: '6px 10px', borderRadius: '7px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <Edit size={12} /> Edit
                                 </button>
-                              ) : item.status === 'in_auction' ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  <span style={{ fontSize: '11px', color: '#eab308', fontWeight: 'bold' }}>Live #{item.published_product_id}</span>
+
+                                {item.status === 'available' ? (
                                   <button
-                                    onClick={() => handleUnpublishAuction(item)}
-                                    style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                                    Stop / Unpublish
+                                    onClick={() => handlePublishAuction(item)}
+                                    style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
+                                    Publish Auction
                                   </button>
-                                </div>
-                              ) : (
-                                <span style={{ fontSize: '11px', color: '#64748b' }}>{item.status}</span>
-                              )}
+                                ) : item.status === 'in_auction' ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <span style={{ fontSize: '11px', color: '#eab308', fontWeight: 'bold' }}>Live #{item.published_product_id}</span>
+                                    <button
+                                      onClick={() => handleUnpublishAuction(item)}
+                                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
+                                      Stop / Unpublish
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>{item.status}</span>
+                                )}
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -2196,7 +2955,10 @@ export default function App() {
               {/* Sub-tab Pill Switcher */}
               <div style={{ display: 'flex', backgroundColor: '#0f172a', borderRadius: '12px', padding: '4px', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <button
-                  onClick={() => setCustomerSubTab('customers')}
+                  onClick={() => {
+                    setCustomerSubTab('customers');
+                    fetchUsers();
+                  }}
                   style={{
                     backgroundColor: customerSubTab === 'customers' ? '#38bdf8' : 'transparent',
                     color: customerSubTab === 'customers' ? '#0f172a' : '#94a3b8',
@@ -2268,7 +3030,7 @@ export default function App() {
             {/* SUB-TAB 1: CUSTOMERS LIST & 3-STRIKE CRM */}
             {customerSubTab === 'customers' && (
               <div>
-                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', alignItems: 'center' }}>
                   <input
                     type="text"
                     placeholder="Search customers by name, phone, or Customer ID..."
@@ -2276,6 +3038,46 @@ export default function App() {
                     onChange={e => setUserSearch(e.target.value)}
                     style={{ flex: 1, backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '11px 16px', color: '#fff', fontSize: '13px' }}
                   />
+                  <button
+                    onClick={fetchUsers}
+                    title="Refresh Customers List"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      backgroundColor: '#1e293b',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '10px',
+                      padding: '11px 16px',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <RefreshCw size={15} />
+                    Refresh
+                  </button>
+                  <button
+                    onClick={() => setShowBroadcastModal(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: '#7c3aed',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '11px 20px',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(124,58,237,0.3)'
+                    }}
+                  >
+                    <Send size={15} />
+                    Broadcast Notification
+                  </button>
                 </div>
 
                 <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto', marginBottom: '32px' }}>
@@ -2285,6 +3087,7 @@ export default function App() {
                         <th style={{ padding: '16px 20px' }}>Customer ID</th>
                         <th style={{ padding: '16px 20px' }}>Full Name</th>
                         <th style={{ padding: '16px 20px' }}>Phone / Email</th>
+                        <th style={{ padding: '16px 20px' }}>City / Address</th>
                         <th style={{ padding: '16px 20px' }}>Refusal Strikes</th>
                         <th style={{ padding: '16px 20px' }}>Account Status</th>
                         <th style={{ padding: '16px 20px' }}>Actions</th>
@@ -2296,10 +3099,48 @@ export default function App() {
                           <td style={{ padding: '16px 20px', fontFamily: 'monospace' }}>#{u.id}</td>
                           <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{u.name}</td>
                           <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{u.phone || u.email}</td>
+                          <td style={{ padding: '16px 20px', color: '#cbd5e1', fontSize: '12px' }}>
+                            {u.city ? <span style={{ color: '#38bdf8', fontWeight: '600' }}>{u.city}</span> : '—'}
+                            {u.address ? <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{u.address}</div> : null}
+                          </td>
                           <td style={{ padding: '16px 20px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: u.refusal_count >= 3 ? '#ef4444' : '#eab308' }}>
-                              {u.refusal_count || 0} / 3 Strikes
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 'bold', color: u.refusal_count >= 3 ? '#ef4444' : '#eab308' }}>
+                                {u.refusal_count || 0} / 3 Strikes
+                              </span>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  title="Add Strike (+1)"
+                                  onClick={async () => {
+                                    if (confirm(`Add 1 refusal strike to customer ${u.name}? (If strikes reach 3, account will be banned)`)) {
+                                      try {
+                                        await axios.patch(`${API_ADMIN}/users/${u.id}/strikes`, { delta: 1, reason: 'Refused delivery' });
+                                        fetchUsers();
+                                      } catch (e) {
+                                        alert(e.response?.data?.error || e.message);
+                                      }
+                                    }
+                                  }}
+                                  style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', width: '22px', height: '22px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  +1
+                                </button>
+                                <button
+                                  title="Reset / Decrement Strike (-1)"
+                                  onClick={async () => {
+                                    try {
+                                      await axios.patch(`${API_ADMIN}/users/${u.id}/strikes`, { delta: -1 });
+                                      fetchUsers();
+                                    } catch (e) {
+                                      alert(e.response?.data?.error || e.message);
+                                    }
+                                  }}
+                                  style={{ backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '4px', width: '22px', height: '22px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  -1
+                                </button>
+                              </div>
+                            </div>
                           </td>
                           <td style={{ padding: '16px 20px' }}>
                             <span style={{ fontSize: '11px', color: (u.is_banned || u.status === 'blocked') ? '#ef4444' : '#22c55e', backgroundColor: (u.is_banned || u.status === 'blocked') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: '4px', fontWeight: '700' }}>
@@ -2307,18 +3148,59 @@ export default function App() {
                             </span>
                           </td>
                           <td style={{ padding: '16px 20px' }}>
-                            <button
-                              onClick={async () => {
-                                const action = (u.is_banned || u.status === 'blocked') ? 'approve' : 'block';
-                                if (confirm(`Confirm ${action} for customer ${u.name}?`)) {
-                                  await axios.patch(`${API_ADMIN}/users/${action}/${u.id}`);
-                                  fetchUsers();
-                                  fetchKPI();
-                                }
-                              }}
-                              style={{ backgroundColor: (u.is_banned || u.status === 'blocked') ? '#16a34a' : '#dc2626', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                              {(u.is_banned || u.status === 'blocked') ? 'Unban Customer' : 'Ban Customer'}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {/* Edit Customer Button */}
+                              <button
+                                title="Edit Customer Details"
+                                onClick={() => {
+                                  setEditingCustomer(u);
+                                  setEditCustomerForm({
+                                    name: u.name || '',
+                                    phone: u.phone || '',
+                                    address: u.address || '',
+                                    city: u.city || ''
+                                  });
+                                }}
+                                style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Edit size={12} /> Edit
+                              </button>
+
+                              {/* Ban / Unban Button */}
+                              <button
+                                onClick={async () => {
+                                  const action = (u.is_banned || u.status === 'blocked') ? 'approve' : 'block';
+                                  if (confirm(`Confirm ${action} for customer ${u.name}?`)) {
+                                    await axios.patch(`${API_ADMIN}/users/${action}/${u.id}`);
+                                    fetchUsers();
+                                    fetchKPI();
+                                  }
+                                }}
+                                style={{ backgroundColor: (u.is_banned || u.status === 'blocked') ? '#16a34a' : '#ea580c', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                              >
+                                {(u.is_banned || u.status === 'blocked') ? 'Unban' : 'Ban'}
+                              </button>
+
+                              {/* Delete Customer Button */}
+                              <button
+                                title="Delete Customer Account"
+                                onClick={async () => {
+                                  if (confirm(`⚠️ Are you sure you want to permanently delete customer ${u.name} (#${u.id})? This action cannot be undone!`)) {
+                                    try {
+                                      await axios.delete(`${API_ADMIN}/users/${u.id}`);
+                                      alert('Customer deleted successfully');
+                                      fetchUsers();
+                                      fetchKPI();
+                                    } catch (err) {
+                                      alert(err.response?.data?.error || err.message || 'Failed to delete customer');
+                                    }
+                                  }
+                                }}
+                                style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -3353,6 +4235,109 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* MODAL: EDIT EMPLOYEE ROLE & PASSWORD */}
+            {showEditStaffModal && editingStaff && (
+              <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+                <div style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '480px', color: '#f8fafc', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Key size={20} color="#f59e0b" />
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', margin: 0 }}>Edit Employee: {editingStaff.name}</h3>
+                    </div>
+                    <button onClick={() => setShowEditStaffModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const payload = {
+                        name: editingStaff.name,
+                        role: editingStaff.role,
+                        status: editingStaff.status
+                      };
+                      if (editingStaff.password && editingStaff.password.trim().length > 0) {
+                        payload.password = editingStaff.password.trim();
+                      }
+                      const res = await axios.put(`${API_ADMIN}/users/${editingStaff.id}`, payload);
+                      if (res.data) {
+                        alert(`Employee ${editingStaff.name} updated successfully!`);
+                        setShowEditStaffModal(false);
+                        fetchStaff();
+                      }
+                    } catch (err) {
+                      alert(err.response?.data?.message || err.response?.data?.error || err.message);
+                    }
+                  }}>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Full Name</label>
+                      <input
+                        type="text"
+                        value={editingStaff.name}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, name: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Assigned Role</label>
+                      <select
+                        value={editingStaff.role}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="employee">Employee (Staff Member)</option>
+                        <option value="manager">Manager</option>
+                        <option value="editor">Editor</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Account Status</label>
+                      <select
+                        value={editingStaff.status}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, status: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="approved">Active / Approved (Allowed)</option>
+                        <option value="pending">Pending Review</option>
+                        <option value="blocked">Blocked / Suspended</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '22px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#f59e0b', marginBottom: '6px' }}>Reset Password (leave empty to keep current)</label>
+                      <input
+                        type="password"
+                        placeholder="New Password (optional)"
+                        value={editingStaff.password}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, password: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditStaffModal(false)}
+                        style={{ backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        style={{ backgroundColor: '#f59e0b', border: 'none', color: '#0f172a', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3782,66 +4767,509 @@ export default function App() {
            ===================================================================== */}
         {activeTab === 'staff' && canAccessStaff && (
           <div style={{ padding: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
-              <div>
-                <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Employees & Custom Granular Permissions</h2>
-                <p style={{ fontSize: '13px', color: '#64748b' }}>
-                  Define custom permissions individually per employee across Inventory, Auctions, Customers, Orders, and System settings.
-                </p>
+            {/* Top Navigation Tabs */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(16px)', padding: '5px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <button
+                  onClick={() => setStaffSubTab('list')}
+                  style={{
+                    backgroundColor: staffSubTab === 'list' ? '#6366f1' : 'transparent',
+                    color: staffSubTab === 'list' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: staffSubTab === 'list' ? '700' : '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Users size={16} /> All Employees ({staffList.length})
+                </button>
+                <button
+                  onClick={() => setStaffSubTab('add')}
+                  style={{
+                    backgroundColor: staffSubTab === 'add' ? '#ea580c' : 'transparent',
+                    backgroundImage: staffSubTab === 'add' ? 'linear-gradient(to right, #ea580c, #f97316)' : 'none',
+                    color: staffSubTab === 'add' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: staffSubTab === 'add' ? '700' : '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <UserPlus size={16} /> Add Employee
+                </button>
               </div>
 
-              <button
-                onClick={() => setShowStaffModal(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '11px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
-                <UserPlus size={16} /> Add Staff Member
-              </button>
+              {staffSubTab === 'list' && (
+                <button
+                  onClick={() => setStaffSubTab('add')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#ea580c', backgroundImage: 'linear-gradient(to right, #ea580c, #f97316)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '13px', boxShadow: '0 4px 14px rgba(234, 88, 12, 0.35)' }}>
+                  <UserPlus size={16} /> Add Employee
+                </button>
+              )}
             </div>
 
-            <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
-                    <th style={{ padding: '16px 20px' }}>Staff Name</th>
-                    <th style={{ padding: '16px 20px' }}>Email Address</th>
-                    <th style={{ padding: '16px 20px' }}>Base Role</th>
-                    <th style={{ padding: '16px 20px' }}>Status</th>
-                    <th style={{ padding: '16px 20px' }}>Custom Permissions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffList.map(s => {
-                    const sb = getRoleBadge(s.role);
-                    return (
-                      <tr key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{s.name}</td>
-                        <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{s.email}</td>
-                        <td style={{ padding: '16px 20px' }}>
-                          <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '4px', backgroundColor: sb.bg, color: sb.color }}>
-                            {sb.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: '16px 20px' }}>
-                          <span style={{ fontSize: '11px', color: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: '4px' }}>
-                            {s.status || 'Active'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '16px 20px' }}>
-                          <button
-                            onClick={async () => {
-                              const res = await axios.get(`${API_ENTERPRISE}/employees/${s.id}/permissions`);
-                              setSelectedEmployeePerms({ staff: s, perms: res.data.data || [] });
-                              setShowPermsModal(true);
-                            }}
-                            style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', color: '#38bdf8', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                            Configure Permissions
-                          </button>
-                        </td>
+            {/* TAB 1: ALL EMPLOYEES TABLE */}
+            {staffSubTab === 'list' && (
+              <div>
+                <div style={{ marginBottom: '20px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px' }}>Employees & Custom Granular Permissions</h2>
+                  <p style={{ fontSize: '13px', color: '#64748b' }}>
+                    Define custom permissions individually per employee across Inventory, Auctions, Customers, Orders, and System settings.
+                  </p>
+                </div>
+
+                <div className="glass-panel" style={{ borderRadius: '16px', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                        <th style={{ padding: '16px 20px' }}>Staff Name</th>
+                        <th style={{ padding: '16px 20px' }}>Email Address</th>
+                        <th style={{ padding: '16px 20px' }}>Base Role</th>
+                        <th style={{ padding: '16px 20px' }}>Status</th>
+                        <th style={{ padding: '16px 20px' }}>Custom Permissions</th>
+                        <th style={{ padding: '16px 20px' }}>Actions</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {staffList.map(s => {
+                        const sb = getRoleBadge(s.role);
+                        return (
+                          <tr key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '16px 20px', fontWeight: 'bold' }}>{s.name}</td>
+                            <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{s.email}</td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '4px', backgroundColor: sb.bg, color: sb.color }}>
+                                {sb.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <span style={{ fontSize: '11px', color: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: '4px' }}>
+                                {s.status || 'Active'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <button
+                                onClick={async () => {
+                                  const res = await axios.get(`${API_ENTERPRISE}/employees/${s.id}/permissions`);
+                                  setSelectedEmployeePerms({ staff: s, perms: res.data.data || [] });
+                                  setShowPermsModal(true);
+                                }}
+                                style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#38bdf8', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                                Configure Permissions
+                              </button>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingStaff({
+                                    id: s.id,
+                                    name: s.name || '',
+                                    email: s.email || '',
+                                    role: s.role || 'employee',
+                                    status: s.status || 'approved',
+                                    password: ''
+                                  });
+                                  setShowEditStaffModal(true);
+                                }}
+                                style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#fbbf24', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>
+                                Edit Role & Password
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: DEDICATED FULL-PAGE ADD EMPLOYEE VIEW (MATCHING EXACT CLIENT DESIGN) */}
+            {staffSubTab === 'add' && (
+              <div style={{ maxWidth: '880px', margin: '0 auto' }}>
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 36px', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.5)', color: '#1e293b' }}>
+                  
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
+                        <UserPlus size={22} />
+                      </div>
+                      <div>
+                        <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Add Employee</h2>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Create an administrative user and assign custom operational access</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setStaffSubTab('list')}
+                      style={{ background: '#f1f5f9', border: 'none', color: '#64748b', cursor: 'pointer', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
+                    >
+                      â† Back to Employees
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateEmployee} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/* Section 1: Employee Information */}
+                    <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', padding: '20px 24px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#334155', fontWeight: '700', fontSize: '14px' }}>
+                        <Users size={16} color="#4f46e5" /> Employee Information
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ahmed Saleh"
+                            value={newStaff.name}
+                            onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
+                            style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Username <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="ahmed.s"
+                            value={newStaff.username}
+                            onChange={e => setNewStaff({ ...newStaff, username: e.target.value })}
+                            style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Password <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                            value={newStaff.password}
+                            onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
+                            style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Role</label>
+                          <select
+                            value={newStaff.role}
+                            onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
+                            style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                          >
+                            <option value="employee">Employee</option>
+                            <option value="manager">Manager</option>
+                            <option value="editor">Editor</option>
+                            {userRole === 'superadmin' && <option value="admin">Admin</option>}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Permissions Matrix */}
+                    <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', color: '#334155', fontWeight: '700', fontSize: '15px' }}>
+                        <Shield size={18} color="#4f46e5" /> Permissions
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>
+                        Select the sections this employee can access and choose the permission level.
+                      </p>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {newStaffPermissions.map((item, idx) => (
+                          <div key={item.module} style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '10px 14px',
+                              backgroundColor: item.checked ? '#f8fafc' : '#ffffff',
+                              border: '1px solid',
+                              borderColor: item.checked ? '#c7d2fe' : '#e2e8f0',
+                              borderRadius: '10px',
+                              transition: 'all 0.15s ease'
+                            }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', flex: 1 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.checked}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    const updated = [...newStaffPermissions];
+                                    updated[idx].checked = checked;
+                                    if (!checked) {
+                                      updated[idx].level = '';
+                                      if (updated[idx].children) {
+                                        updated[idx].children.forEach(c => { c.checked = false; c.level = ''; });
+                                      }
+                                    } else {
+                                      if (!updated[idx].level && !updated[idx].isGroup) updated[idx].level = 'view';
+                                      if (updated[idx].children) {
+                                        updated[idx].children.forEach(c => { c.checked = true; c.level = 'full'; });
+                                      }
+                                    }
+                                    setNewStaffPermissions(updated);
+                                  }}
+                                  style={{ width: '16px', height: '16px', accentColor: '#4f46e5', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>
+                                  {item.label}
+                                </span>
+                              </label>
+
+                              {!item.isGroup ? (
+                                <div style={{ width: '180px' }}>
+                                  <select
+                                    value={item.level}
+                                    disabled={!item.checked}
+                                    onChange={(e) => {
+                                      const updated = [...newStaffPermissions];
+                                      updated[idx].level = e.target.value;
+                                      if (e.target.value) updated[idx].checked = true;
+                                      setNewStaffPermissions(updated);
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      padding: '6px 10px',
+                                      borderRadius: '8px',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      border: '1px solid',
+                                      borderColor: item.level === 'full' ? '#86efac' : (item.level === 'view' ? '#bfdbfe' : '#cbd5e1'),
+                                      backgroundColor: item.level === 'full' ? '#f0fdf4' : (item.level === 'view' ? '#eff6ff' : '#ffffff'),
+                                      color: item.level === 'full' ? '#15803d' : (item.level === 'view' ? '#1d4ed8' : '#64748b'),
+                                      cursor: item.checked ? 'pointer' : 'not-allowed'
+                                    }}
+                                  >
+                                    <option value="">â€” Select Permission â€”</option>
+                                    <option value="view">View Only</option>
+                                    <option value="full">Full Control</option>
+                                  </select>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {/* Sub-items for Group (e.g. Customers) */}
+                            {item.isGroup && item.children && item.checked && (
+                              <div style={{ marginLeft: '32px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {item.children.map((child, cIdx) => (
+                                  <div key={child.module} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 14px',
+                                    backgroundColor: child.checked ? '#f1f5f9' : '#fafafa',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px'
+                                  }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={child.checked}
+                                        onChange={(e) => {
+                                          const updated = [...newStaffPermissions];
+                                          updated[idx].children[cIdx].checked = e.target.checked;
+                                          if (!e.target.checked) updated[idx].children[cIdx].level = '';
+                                          else if (!updated[idx].children[cIdx].level) updated[idx].children[cIdx].level = 'full';
+                                          setNewStaffPermissions(updated);
+                                        }}
+                                        style={{ width: '15px', height: '15px', accentColor: '#4f46e5', cursor: 'pointer' }}
+                                      />
+                                      <span style={{ fontSize: '12px', fontWeight: '500', color: '#334155' }}>
+                                        {child.label}
+                                      </span>
+                                    </label>
+
+                                    <div style={{ width: '180px' }}>
+                                      <select
+                                        value={child.level}
+                                        disabled={!child.checked}
+                                        onChange={(e) => {
+                                          const updated = [...newStaffPermissions];
+                                          updated[idx].children[cIdx].level = e.target.value;
+                                          if (e.target.value) updated[idx].children[cIdx].checked = true;
+                                          setNewStaffPermissions(updated);
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          padding: '6px 10px',
+                                          borderRadius: '8px',
+                                          fontSize: '12px',
+                                          fontWeight: '600',
+                                          border: '1px solid',
+                                          borderColor: child.level === 'full' ? '#86efac' : (child.level === 'view' ? '#bfdbfe' : '#cbd5e1'),
+                                          backgroundColor: child.level === 'full' ? '#f0fdf4' : (child.level === 'view' ? '#eff6ff' : '#ffffff'),
+                                          color: child.level === 'full' ? '#15803d' : (child.level === 'view' ? '#1d4ed8' : '#64748b'),
+                                          cursor: child.checked ? 'pointer' : 'not-allowed'
+                                        }}
+                                      >
+                                        <option value="">â€” Select Permission â€”</option>
+                                        <option value="view">View Only</option>
+                                        <option value="full">Full Control</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                      <button
+                        type="button"
+                        onClick={() => setStaffSubTab('list')}
+                        style={{ backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={staffLoading}
+                        style={{
+                          backgroundColor: '#ea580c',
+                          backgroundImage: 'linear-gradient(to right, #ea580c, #f97316)',
+                          border: 'none',
+                          color: '#ffffff',
+                          padding: '10px 26px',
+                          borderRadius: '10px',
+                          cursor: staffLoading ? 'not-allowed' : 'pointer',
+                          fontWeight: '700',
+                          fontSize: '13px',
+                          boxShadow: '0 4px 14px rgba(234, 88, 12, 0.35)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        {staffLoading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                        Save Employee
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* MODAL: EDIT EMPLOYEE ROLE & PASSWORD */}
+            {showEditStaffModal && editingStaff && (
+              <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+                <div style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '480px', color: '#f8fafc', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Key size={20} color="#f59e0b" />
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', margin: 0 }}>Edit Employee: {editingStaff.name}</h3>
+                    </div>
+                    <button onClick={() => setShowEditStaffModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const payload = {
+                        name: editingStaff.name,
+                        role: editingStaff.role,
+                        status: editingStaff.status
+                      };
+                      if (editingStaff.password && editingStaff.password.trim().length > 0) {
+                        payload.password = editingStaff.password.trim();
+                      }
+                      const res = await axios.put(`${API_ADMIN}/users/${editingStaff.id}`, payload);
+                      if (res.data) {
+                        alert(`Employee ${editingStaff.name} updated successfully!`);
+                        setShowEditStaffModal(false);
+                        fetchStaff();
+                      }
+                    } catch (err) {
+                      alert(err.response?.data?.message || err.response?.data?.error || err.message);
+                    }
+                  }}>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Full Name</label>
+                      <input
+                        type="text"
+                        value={editingStaff.name}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, name: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Assigned Role</label>
+                      <select
+                        value={editingStaff.role}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="employee">Employee (Staff Member)</option>
+                        <option value="manager">Manager</option>
+                        <option value="editor">Editor</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Account Status</label>
+                      <select
+                        value={editingStaff.status}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, status: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="approved">Active / Approved (Allowed)</option>
+                        <option value="pending">Pending Review</option>
+                        <option value="blocked">Blocked / Suspended</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '22px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#f59e0b', marginBottom: '6px' }}>Reset Password (leave empty to keep current)</label>
+                      <input
+                        type="password"
+                        placeholder="New Password (optional)"
+                        value={editingStaff.password}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, password: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditStaffModal(false)}
+                        style={{ backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        style={{ backgroundColor: '#f59e0b', border: 'none', color: '#0f172a', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -4462,10 +5890,399 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* MODAL: EDIT EMPLOYEE ROLE & PASSWORD */}
+            {showEditStaffModal && editingStaff && (
+              <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+                <div style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '480px', color: '#f8fafc', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Key size={20} color="#f59e0b" />
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', margin: 0 }}>Edit Employee: {editingStaff.name}</h3>
+                    </div>
+                    <button onClick={() => setShowEditStaffModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '20px' }}>&times;</button>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const payload = {
+                        name: editingStaff.name,
+                        role: editingStaff.role,
+                        status: editingStaff.status
+                      };
+                      if (editingStaff.password && editingStaff.password.trim().length > 0) {
+                        payload.password = editingStaff.password.trim();
+                      }
+                      const res = await axios.put(`${API_ADMIN}/users/${editingStaff.id}`, payload);
+                      if (res.data) {
+                        alert(`Employee ${editingStaff.name} updated successfully!`);
+                        setShowEditStaffModal(false);
+                        fetchStaff();
+                      }
+                    } catch (err) {
+                      alert(err.response?.data?.message || err.response?.data?.error || err.message);
+                    }
+                  }}>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Full Name</label>
+                      <input
+                        type="text"
+                        value={editingStaff.name}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, name: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Assigned Role</label>
+                      <select
+                        value={editingStaff.role}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="employee">Employee (Staff Member)</option>
+                        <option value="manager">Manager</option>
+                        <option value="editor">Editor</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>Account Status</label>
+                      <select
+                        value={editingStaff.status}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, status: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      >
+                        <option value="approved">Active / Approved (Allowed)</option>
+                        <option value="pending">Pending Review</option>
+                        <option value="blocked">Blocked / Suspended</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: '22px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#f59e0b', marginBottom: '6px' }}>Reset Password (leave empty to keep current)</label>
+                      <input
+                        type="password"
+                        placeholder="New Password (optional)"
+                        value={editingStaff.password}
+                        onChange={(e) => setEditingStaff({ ...editingStaff, password: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', color: '#fff', fontSize: '13px' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditStaffModal(false)}
+                        style={{ backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        style={{ backgroundColor: '#f59e0b', border: 'none', color: '#0f172a', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* =====================================================================
+            TAB 16: PUSH NOTIFICATIONS MANAGEMENT (FCM OVER-THE-AIR BROADCAST)
+           ===================================================================== */}
+        {activeTab === 'push_notifications' && canAccessCRM && (
+          <div style={{ padding: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Bell size={26} color="#f97316" /> Push Notifications Management
+                </h2>
+                <p style={{ fontSize: '13px', color: '#64748b' }}>
+                  Broadcast instant push alerts to ALL mobile users (Android & iOS) via Firebase Cloud Messaging.
+                </p>
+              </div>
+
+              {/* Sub Tabs */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(16px)', padding: '5px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <button
+                  onClick={() => setPushActiveTab('create')}
+                  style={{
+                    backgroundColor: pushActiveTab === 'create' ? '#ea580c' : 'transparent',
+                    backgroundImage: pushActiveTab === 'create' ? 'linear-gradient(to right, #ea580c, #f97316)' : 'none',
+                    color: pushActiveTab === 'create' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: pushActiveTab === 'create' ? '700' : '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Send size={15} /> Send Notification
+                </button>
+                <button
+                  onClick={() => {
+                    setPushActiveTab('history');
+                    fetchPushHistory();
+                  }}
+                  style={{
+                    backgroundColor: pushActiveTab === 'history' ? '#6366f1' : 'transparent',
+                    color: pushActiveTab === 'history' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: pushActiveTab === 'history' ? '700' : '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <History size={15} /> Notification History ({pushHistory.length})
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: CREATE & BROADCAST NOTIFICATION */}
+            {pushActiveTab === 'create' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 680px) minmax(280px, 380px)', gap: '24px', alignItems: 'start' }}>
+                
+                {/* Form Card */}
+                <div className="glass-panel" style={{ padding: '28px', borderRadius: '20px' }}>
+                  <form onSubmit={handleSendPushBroadcast}>
+                    
+                    {/* Title */}
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#f8fafc' }}>
+                        Notification Title <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. New Products Available!"
+                        value={pushBroadcastForm.title}
+                        onChange={e => setPushBroadcastForm({ ...pushBroadcastForm, title: e.target.value })}
+                        style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '12px 16px', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Message Body */}
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#f8fafc' }}>
+                        Notification Message Body <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <textarea
+                        required
+                        rows={4}
+                        placeholder="e.g. New products have just been added to IRAQ BID. Open the app now and start bidding!"
+                        value={pushBroadcastForm.message}
+                        onChange={e => setPushBroadcastForm({ ...pushBroadcastForm, message: e.target.value })}
+                        style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '12px 16px', color: '#fff', fontSize: '13px', lineHeight: '1.6', boxSizing: 'border-box', resize: 'vertical' }}
+                      />
+                    </div>
+
+                    {/* Optional Image URL */}
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#f8fafc' }}>
+                        Banner / Image URL <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '400' }}>(Optional)</span>
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://yourdomain.com/banner.jpg"
+                        value={pushBroadcastForm.image_url}
+                        onChange={e => setPushBroadcastForm({ ...pushBroadcastForm, image_url: e.target.value })}
+                        style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '12px 16px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Destination Deep-Link */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#f8fafc' }}>
+                          Target Screen (Tap Action)
+                        </label>
+                        <select
+                          value={pushBroadcastForm.destination_screen}
+                          onChange={e => setPushBroadcastForm({ ...pushBroadcastForm, destination_screen: e.target.value })}
+                          style={{ width: '100%', backgroundColor: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                        >
+                          <option value="home">Home Page</option>
+                          <option value="auctions">Live Auctions</option>
+                          <option value="wallet">User Wallet</option>
+                          <option value="orders">My Orders</option>
+                          <option value="product">Specific Product ID</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#f8fafc' }}>
+                          Related Entity ID <span style={{ color: '#64748b', fontSize: '11px' }}>(e.g. Product ID)</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 42"
+                          value={pushBroadcastForm.related_id}
+                          onChange={e => setPushBroadcastForm({ ...pushBroadcastForm, related_id: e.target.value })}
+                          style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '10px', padding: '12px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Broadcast Action Button */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                      <div style={{ fontSize: '12px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                        Targeting ALL Installed App Users
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={pushSending}
+                        style={{
+                          backgroundColor: '#ea580c',
+                          backgroundImage: 'linear-gradient(to right, #ea580c, #f97316)',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '12px 32px',
+                          borderRadius: '12px',
+                          fontWeight: '800',
+                          fontSize: '14px',
+                          cursor: pushSending ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          boxShadow: '0 8px 24px -4px rgba(234, 88, 12, 0.45)'
+                        }}
+                      >
+                        {pushSending ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+                        {pushSending ? 'Sending Over-The-Air...' : 'Send Notification Now'}
+                      </button>
+                    </div>
+
+                  </form>
+                </div>
+
+                {/* Live Mobile Notification Preview Card */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Live Phone Lock-Screen Preview
+                  </div>
+
+                  <div style={{ backgroundColor: '#000000', borderRadius: '28px', padding: '24px 18px', border: '2px solid rgba(255, 255, 255, 0.12)', boxShadow: '0 25px 60px rgba(0,0,0,0.8)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                      <div style={{ width: '60px', height: '4px', backgroundColor: '#334155', borderRadius: '2px' }} />
+                    </div>
+
+                    {/* Notification Banner */}
+                    <div style={{ backgroundColor: 'rgba(30, 41, 59, 0.85)', backdropFilter: 'blur(16px)', borderRadius: '16px', padding: '14px 16px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '20px', height: '20px', borderRadius: '6px', backgroundColor: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                            <Gavel size={12} />
+                          </div>
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: '#cbd5e1' }}>IRAQ BID</span>
+                        </div>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>now</span>
+                      </div>
+
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', marginBottom: '4px' }}>
+                        {pushBroadcastForm.title || 'New Products Available!'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.4' }}>
+                        {pushBroadcastForm.message || 'New products have just been added to IRAQ BID. Open the app now and start bidding!'}
+                      </div>
+
+                      {pushBroadcastForm.image_url && (
+                        <div style={{ marginTop: '10px', borderRadius: '8px', overflow: 'hidden', height: '110px' }}>
+                          <img src={pushBroadcastForm.image_url} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '11px', color: '#64748b' }}>
+                      Supports both Android & iOS Lock Screen & Heads-Up Banner
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 2: NOTIFICATION HISTORY TABLE */}
+            {pushActiveTab === 'history' && (
+              <div className="glass-panel" style={{ borderRadius: '16px', overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                      <th style={{ padding: '16px 20px' }}>Notification Title & Body</th>
+                      <th style={{ padding: '16px 20px' }}>Target Destination</th>
+                      <th style={{ padding: '16px 20px' }}>Targeted Count</th>
+                      <th style={{ padding: '16px 20px' }}>Sent By</th>
+                      <th style={{ padding: '16px 20px' }}>Date & Time</th>
+                      <th style={{ padding: '16px 20px' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pushHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                          No broadcast notifications sent yet. Use the "Send Notification" tab to dispatch your first push notification!
+                        </td>
+                      </tr>
+                    ) : (
+                      pushHistory.map(b => (
+                        <tr key={b.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '16px 20px', maxWidth: '340px' }}>
+                            <div style={{ fontWeight: '700', color: '#f8fafc', marginBottom: '4px' }}>{b.title}</div>
+                            <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4' }}>{b.message}</div>
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <span style={{ fontSize: '11px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '4px 10px', borderRadius: '6px', fontWeight: '600' }}>
+                              {b.destination_screen || 'Home'}
+                              {b.related_id ? ` (#${b.related_id})` : ''}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <div style={{ fontWeight: '700', color: '#f8fafc' }}>{b.targeted_count || b.success_count || 0} users</div>
+                            <div style={{ fontSize: '11px', color: '#10b981' }}>Delivered</div>
+                          </td>
+                          <td style={{ padding: '16px 20px', color: '#cbd5e1' }}>
+                            {b.sent_by_name || 'Super Admin'}
+                          </td>
+                          <td style={{ padding: '16px 20px', color: '#94a3b8', fontSize: '12px' }}>
+                            {new Date(b.created_at).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <span style={{ fontSize: '11px', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle size={12} /> Sent
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        
+{/* =====================================================================
             TAB 15: SYSTEM SETTINGS
            ===================================================================== */}
         {activeTab === 'settings' && canAccessCRM && (
@@ -4944,94 +6761,482 @@ export default function App() {
       )}
 
       {/* =====================================================================
-          MODAL: ADD NEW STAFF MEMBER
+          MODAL: ADD NEW EMPLOYEE WITH EXACT PERMISSIONS (MATCHING REFERENCE DESIGN)
          ===================================================================== */}
       {showStaffModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '520px', borderRadius: '18px', padding: '28px', border: '1px solid rgba(255,255,255,0.12)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Add Staff Member</h3>
-              <button onClick={() => setShowStaffModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', width: '100%', maxWidth: '820px', maxHeight: '92vh', borderRadius: '24px', padding: '32px 36px', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', color: '#1e293b', overflow: 'hidden' }}>
+            
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
+                  <UserPlus size={22} />
+                </div>
+                <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Add Employee</h2>
+              </div>
+              <button 
+                onClick={() => setShowStaffModal(false)} 
+                style={{ background: '#f1f5f9', border: 'none', color: '#64748b', cursor: 'pointer', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              setStaffLoading(true);
-              try {
-                const res = await axios.post(`${API_ADMIN}/staff`, newStaff);
-                if (res.data.success) {
-                  alert(res.data.message || 'Staff created successfully');
-                  setShowStaffModal(false);
-                  setNewStaff({ name: '', email: '', password: '', phone: '', role: 'editor' });
-                  fetchStaff();
+            <form 
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setStaffLoading(true);
+                try {
+                  // Flatten permissions from list & children
+                  const permissionsPayload = [];
+                  newStaffPermissions.forEach(item => {
+                    if (item.isGroup && item.children) {
+                      item.children.forEach(c => {
+                        if (c.checked) {
+                          permissionsPayload.push({
+                            module: c.module,
+                            can_view: true,
+                            can_create: c.level === 'full',
+                            can_edit: c.level === 'full' || c.level === 'edit',
+                            can_delete: c.level === 'full',
+                            can_approve: c.level === 'full',
+                            permission_level: c.level
+                          });
+                        }
+                      });
+                    } else if (item.checked) {
+                      permissionsPayload.push({
+                        module: item.module,
+                        can_view: true,
+                        can_create: item.level === 'full',
+                        can_edit: item.level === 'full' || item.level === 'edit',
+                        can_delete: item.level === 'full',
+                        can_approve: item.level === 'full',
+                        permission_level: item.level
+                      });
+                    }
+                  });
+
+                  const res = await axios.post(`${API_ADMIN}/staff`, {
+                    ...newStaff,
+                    permissions: permissionsPayload
+                  });
+
+                  if (res.data.success) {
+                    alert(res.data.message || 'Employee created successfully');
+                    setShowStaffModal(false);
+                    setNewStaff({ name: '', username: '', email: '', password: '', phone: '', role: 'employee' });
+                    fetchStaff();
+                  }
+                } catch (err) {
+                  alert(err.response?.data?.error || err.message || 'Failed to create employee');
+                } finally {
+                  setStaffLoading(false);
                 }
-              } catch (err) {
-                alert(err.response?.data?.error || err.message || 'Failed to create staff');
-              } finally {
-                setStaffLoading(false);
-              }
-            }}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Staff Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ali Hassan"
-                  value={newStaff.name}
-                  onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
-                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
+              }}
+              style={{ overflowY: 'auto', paddingRight: '6px', display: 'flex', flexDirection: 'column', gap: '24px' }}
+            >
+              {/* Section 1: Employee Information */}
+              <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', padding: '20px 24px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#334155', fontWeight: '700', fontSize: '14px' }}>
+                  <Users size={16} color="#4f46e5" /> Employee Information
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ahmed Saleh"
+                      value={newStaff.name}
+                      onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
+                      style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Username <span style={{ color: '#ef4444' }}>*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ahmed.s"
+                      value={newStaff.username}
+                      onChange={e => setNewStaff({ ...newStaff, username: e.target.value })}
+                      style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Password <span style={{ color: '#ef4444' }}>*</span></label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={newStaff.password}
+                      onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
+                      style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '6px' }}>Role</label>
+                    <select
+                      value={newStaff.role}
+                      onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
+                      style={{ width: '100%', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#0f172a', boxSizing: 'border-box' }}
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="editor">Editor</option>
+                      {userRole === 'superadmin' && <option value="admin">Admin</option>}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. ali@iraqbid.com"
-                  value={newStaff.email}
-                  onChange={e => setNewStaff({ ...newStaff, email: e.target.value })}
-                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
+              {/* Section 2: Permissions Matrix */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', color: '#334155', fontWeight: '700', fontSize: '15px' }}>
+                  <Shield size={18} color="#4f46e5" /> Permissions
+                </div>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>
+                  Select the sections this employee can access and choose the permission level.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {newStaffPermissions.map((item, idx) => (
+                    <div key={item.module} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        backgroundColor: item.checked ? '#f8fafc' : '#ffffff',
+                        border: '1px solid',
+                        borderColor: item.checked ? '#c7d2fe' : '#e2e8f0',
+                        borderRadius: '10px',
+                        transition: 'all 0.15s ease'
+                      }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', flex: 1 }}>
+                          <input
+                            type="checkbox"
+                            checked={item.checked}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const updated = [...newStaffPermissions];
+                              updated[idx].checked = checked;
+                              if (!checked) {
+                                updated[idx].level = '';
+                                if (updated[idx].children) {
+                                  updated[idx].children.forEach(c => { c.checked = false; c.level = ''; });
+                                }
+                              } else {
+                                if (!updated[idx].level && !updated[idx].isGroup) updated[idx].level = 'view';
+                                if (updated[idx].children) {
+                                  updated[idx].children.forEach(c => { c.checked = true; c.level = 'full'; });
+                                }
+                              }
+                              setNewStaffPermissions(updated);
+                            }}
+                            style={{ width: '16px', height: '16px', accentColor: '#4f46e5', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>
+                            {item.label}
+                          </span>
+                        </label>
+
+                        {!item.isGroup ? (
+                          <div style={{ width: '180px' }}>
+                            <select
+                              value={item.level}
+                              disabled={!item.checked}
+                              onChange={(e) => {
+                                const updated = [...newStaffPermissions];
+                                updated[idx].level = e.target.value;
+                                if (e.target.value) updated[idx].checked = true;
+                                setNewStaffPermissions(updated);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '6px 10px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                border: '1px solid',
+                                borderColor: item.level === 'full' ? '#86efac' : (item.level === 'view' ? '#bfdbfe' : '#cbd5e1'),
+                                backgroundColor: item.level === 'full' ? '#f0fdf4' : (item.level === 'view' ? '#eff6ff' : '#ffffff'),
+                                color: item.level === 'full' ? '#15803d' : (item.level === 'view' ? '#1d4ed8' : '#64748b'),
+                                cursor: item.checked ? 'pointer' : 'not-allowed'
+                              }}
+                            >
+                              <option value="">— Select Permission —</option>
+                              <option value="view">View Only</option>
+                              <option value="full">Full Control</option>
+                            </select>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Sub-items for Group (e.g. Customers) */}
+                      {item.isGroup && item.children && item.checked && (
+                        <div style={{ marginLeft: '32px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {item.children.map((child, cIdx) => (
+                            <div key={child.module} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 14px',
+                              backgroundColor: child.checked ? '#f1f5f9' : '#fafafa',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '8px'
+                            }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={child.checked}
+                                  onChange={(e) => {
+                                    const updated = [...newStaffPermissions];
+                                    updated[idx].children[cIdx].checked = e.target.checked;
+                                    if (!e.target.checked) updated[idx].children[cIdx].level = '';
+                                    else if (!updated[idx].children[cIdx].level) updated[idx].children[cIdx].level = 'full';
+                                    setNewStaffPermissions(updated);
+                                  }}
+                                  style={{ width: '15px', height: '15px', accentColor: '#4f46e5', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: '12px', fontWeight: '500', color: '#334155' }}>
+                                  {child.label}
+                                </span>
+                              </label>
+
+                              <div style={{ width: '180px' }}>
+                                <select
+                                  value={child.level}
+                                  disabled={!child.checked}
+                                  onChange={(e) => {
+                                    const updated = [...newStaffPermissions];
+                                    updated[idx].children[cIdx].level = e.target.value;
+                                    if (e.target.value) updated[idx].children[cIdx].checked = true;
+                                    setNewStaffPermissions(updated);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    border: '1px solid',
+                                    borderColor: child.level === 'full' ? '#86efac' : (child.level === 'view' ? '#bfdbfe' : '#cbd5e1'),
+                                    backgroundColor: child.level === 'full' ? '#f0fdf4' : (child.level === 'view' ? '#eff6ff' : '#ffffff'),
+                                    color: child.level === 'full' ? '#15803d' : (child.level === 'view' ? '#1d4ed8' : '#64748b'),
+                                    cursor: child.checked ? 'pointer' : 'not-allowed'
+                                  }}
+                                >
+                                  <option value="">— Select Permission —</option>
+                                  <option value="view">View Only</option>
+                                  <option value="full">Full Control</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Password *</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Strong password"
-                  value={newStaff.password}
-                  onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
-                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '22px' }}>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Assigned Administrative Role *</label>
-                <select
-                  value={newStaff.role}
-                  onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
-                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                >
-                  {userRole === 'superadmin' && <option value="admin">Operations Admin</option>}
-                  {['superadmin', 'admin'].includes(userRole) && <option value="manager">Shift Manager</option>}
-                  <option value="editor">Inventory Product Editor (Restricted)</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              {/* Modal Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
                 <button
                   type="button"
                   onClick={() => setShowStaffModal(false)}
-                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer' }}>
+                  style={{ backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+                >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={staffLoading}
-                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '8px', cursor: staffLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-                  {staffLoading ? 'Creating...' : 'Create Account'}
+                  style={{
+                    backgroundColor: '#ea580c',
+                    backgroundImage: 'linear-gradient(to right, #ea580c, #f97316)',
+                    border: 'none',
+                    color: '#ffffff',
+                    padding: '10px 26px',
+                    borderRadius: '10px',
+                    cursor: staffLoading ? 'not-allowed' : 'pointer',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    boxShadow: '0 4px 12px rgba(234, 88, 12, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Save size={16} />
+                  {staffLoading ? 'Saving Employee...' : 'Save Employee'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: EDIT WAREHOUSE INVENTORY PRODUCT
+         ===================================================================== */}
+      {editingInventoryItem && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '18px', padding: '28px', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#f8fafc' }}>Edit Inventory Product</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Barcode: {editingInventoryItem.barcode}</p>
+              </div>
+              <button onClick={() => setEditingInventoryItem(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setEditInventoryLoading(true);
+              try {
+                const res = await axios.put(`${API_ENTERPRISE}/inventory/${editingInventoryItem.id}`, editInventoryForm);
+                if (res.data.success) {
+                  alert('Product updated successfully!');
+                  setEditingInventoryItem(null);
+                  fetchInventory();
+                  fetchKPI();
+                }
+              } catch (err) {
+                alert(err.response?.data?.message || err.message || 'Failed to update product');
+              } finally {
+                setEditInventoryLoading(false);
+              }
+            }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Product Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={editInventoryForm.product_name}
+                  onChange={e => setEditInventoryForm({ ...editInventoryForm, product_name: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Start Bid ($) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editInventoryForm.starting_bid_price}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, starting_bid_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#38bdf8', fontWeight: 'bold', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Buy Now ($) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editInventoryForm.buy_now_price}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, buy_now_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#22c55e', fontWeight: 'bold', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Retail Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editInventoryForm.original_retail_price}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, original_retail_price: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Acquisition Cost ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editInventoryForm.actual_acquisition_cost}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, actual_acquisition_cost: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#eab308', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Condition</label>
+                  <select
+                    value={editInventoryForm.condition}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, condition: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  >
+                    <option value="New">New</option>
+                    <option value="Open Box">Open Box</option>
+                    <option value="Refurbished">Refurbished</option>
+                    <option value="Used">Used</option>
+                    <option value="Damaged">Damaged</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Defect Alert</label>
+                  <select
+                    value={editInventoryForm.defect_alert}
+                    onChange={e => setEditInventoryForm({ ...editInventoryForm, defect_alert: e.target.value })}
+                    style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  >
+                    <option value="Clear">Clear</option>
+                    <option value="Minor Cosmetic">Minor Cosmetic</option>
+                    <option value="Damaged Box">Damaged Box</option>
+                    <option value="Functional Defect">Functional Defect</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Warehouse Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Main Warehouse Slot A"
+                  value={editInventoryForm.warehouse_location}
+                  onChange={e => setEditInventoryForm({ ...editInventoryForm, warehouse_location: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '22px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Description</label>
+                <textarea
+                  rows="3"
+                  value={editInventoryForm.description}
+                  onChange={e => setEditInventoryForm({ ...editInventoryForm, description: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingInventoryItem(null)}
+                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editInventoryLoading}
+                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '8px', cursor: editInventoryLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                  {editInventoryLoading ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>
@@ -5292,6 +7497,192 @@ export default function App() {
                   style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)' }}
                 >
                   {editingCoupon ? 'Update Coupon' : 'Create Coupon'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: EDIT CUSTOMER DETAILS (NAME, PHONE, CITY, ADDRESS)
+         ===================================================================== */}
+      {editingCustomer && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '500px', borderRadius: '18px', padding: '28px', border: '1px solid rgba(255,255,255,0.12)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>Edit Customer #{editingCustomer.id}</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Update name, phone number, governorate/city, and address</p>
+              </div>
+              <button onClick={() => setEditingCustomer(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setEditCustomerLoading(true);
+              try {
+                await axios.put(`${API_ADMIN}/users/${editingCustomer.id}`, editCustomerForm);
+                alert('Customer updated successfully');
+                setEditingCustomer(null);
+                fetchUsers();
+              } catch (err) {
+                alert(err.response?.data?.error || err.message || 'Failed to update customer');
+              } finally {
+                setEditCustomerLoading(false);
+              }
+            }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editCustomerForm.name}
+                  onChange={e => setEditCustomerForm({ ...editCustomerForm, name: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Phone Number (e.g. +9647700000000) *</label>
+                <input
+                  type="text"
+                  required
+                  value={editCustomerForm.phone}
+                  onChange={e => setEditCustomerForm({ ...editCustomerForm, phone: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Governorate / City</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Baghdad, Erbil, Basra..."
+                  value={editCustomerForm.city}
+                  onChange={e => setEditCustomerForm({ ...editCustomerForm, city: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '22px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Delivery Address Details</label>
+                <textarea
+                  rows={3}
+                  placeholder="Street, District, Landmark..."
+                  value={editCustomerForm.address}
+                  onChange={e => setEditCustomerForm({ ...editCustomerForm, address: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomer(null)}
+                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editCustomerLoading}
+                  style={{ backgroundColor: '#0284c7', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '8px', cursor: editCustomerLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                >
+                  {editCustomerLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: BROADCAST NOTIFICATION TO ALL MOBILE APP USERS
+         ===================================================================== */}
+      {showBroadcastModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '520px', borderRadius: '18px', padding: '28px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ backgroundColor: 'rgba(124,58,237,0.2)', padding: '8px', borderRadius: '10px' }}>
+                  <Send size={20} color="#a78bfa" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>Broadcast Notification</h3>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Push instant notification to all registered customers</p>
+                </div>
+              </div>
+              <button onClick={() => setShowBroadcastModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setBroadcastLoading(true);
+              try {
+                const res = await axios.post(`${API_BASE}/notifications/broadcast`, broadcastForm);
+                alert(res.data?.message || 'Broadcast notification sent successfully!');
+                setShowBroadcastModal(false);
+                setBroadcastForm({ title: '', message: '', type: 'system' });
+              } catch (err) {
+                alert(err.response?.data?.message || err.message || 'Failed to send broadcast');
+              } finally {
+                setBroadcastLoading(false);
+              }
+            }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Notification Category</label>
+                <select
+                  value={pushBroadcastForm.type}
+                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, type: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                >
+                  <option value="system">📢 System Announcement</option>
+                  <option value="discount">🏷️ Discount / Special Offer</option>
+                  <option value="auction">⚡ Live Auction Starting Soon</option>
+                  <option value="challenge">🏆 Daily Challenge Update</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Title (Arabic / English) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. خصم خاص 20% لجميع المزايدين اليوم! / Special Offer!"
+                  value={pushBroadcastForm.title}
+                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, title: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '22px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Notification Message Body *</label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Type the message that will appear inside customer in-app notifications center..."
+                  value={pushBroadcastForm.message}
+                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, message: e.target.value })}
+                  style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowBroadcastModal(false)}
+                  style={{ backgroundColor: '#334155', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={broadcastLoading}
+                  style={{ backgroundColor: '#7c3aed', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: '8px', cursor: broadcastLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Send size={15} />
+                  {broadcastLoading ? 'Broadcasting...' : 'Send to All Customers'}
                 </button>
               </div>
             </form>

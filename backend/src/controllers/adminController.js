@@ -91,8 +91,12 @@ export const AdminController = {
           u.name, 
           u.email, 
           u.phone, 
+          u.address,
+          u.city,
           u.role, 
           u.status, 
+          u.refusal_count,
+          u.is_banned,
           COALESCE(b.bids_count, 0) as bids_count, 
           u.created_at
         FROM users u
@@ -217,7 +221,7 @@ export const AdminController = {
       const { id } = req.params;
 
       const result = await pool.query(
-        "DELETE FROM users WHERE id = $1 AND role != 'admin' RETURNING id",
+        "DELETE FROM users WHERE id = $1 AND role NOT IN ('admin', 'superadmin') RETURNING id",
         [id]
       );
 
@@ -249,6 +253,58 @@ export const AdminController = {
         error: "Failed to delete user",
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+    }
+  },
+
+  // ✅ Increment / Adjust User Strikes (Refusal strikes)
+  async adjustUserStrikes(req, res) {
+    try {
+      const { id } = req.params;
+      const { delta = 1, reason = 'Customer refusal' } = req.body;
+
+      const userRes = await pool.query("SELECT id, name, refusal_count FROM users WHERE id = $1", [id]);
+      if (userRes.rowCount === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+
+      const currentCount = userRes.rows[0].refusal_count || 0;
+      const newCount = Math.max(0, currentCount + parseInt(delta));
+      const shouldBlock = newCount >= 3;
+
+      const updateRes = await pool.query(
+        `UPDATE users
+         SET refusal_count = $1,
+             status = CASE WHEN $2 = true THEN 'blocked' ELSE status END,
+             is_banned = CASE WHEN $2 = true THEN true ELSE is_banned END,
+             ban_reason = CASE WHEN $2 = true THEN 'Exceeded maximum 3 refusal strikes' ELSE ban_reason END,
+             banned_at = CASE WHEN $2 = true THEN NOW() ELSE banned_at END
+         WHERE id = $3
+         RETURNING id, name, refusal_count, status, is_banned`,
+        [newCount, shouldBlock, id]
+      );
+
+      // Record in customer_refusals log if delta > 0
+      if (delta > 0) {
+        try {
+          await pool.query(
+            `INSERT INTO customer_refusals (customer_id, recorded_by, reason) VALUES ($1, $2, $3)`,
+            [id, req.user?.id || null, reason]
+          );
+        } catch (e) {
+          console.warn('Could not insert customer_refusal record:', e.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: shouldBlock
+          ? `Customer reached ${newCount}/3 strikes and was automatically banned.`
+          : `Strikes updated to ${newCount}/3.`,
+        data: updateRes.rows[0]
+      });
+    } catch (error) {
+      console.error("❌ [adjustUserStrikes] Error:", error);
+      res.status(500).json({ error: "Failed to update strikes", details: error.message });
     }
   },
 
@@ -357,6 +413,35 @@ export const AdminController = {
       });
     } catch (error) {
       console.error("Error verifying user:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  // Authorize or Revoke VIP Bidders
+  async toggleVipBidder(req, res) {
+    try {
+      const { id } = req.params;
+      const { isVip } = req.body;
+
+      const result = await pool.query(
+        "UPDATE users SET is_vip_bidder = $1 WHERE id = $2 RETURNING id, name, phone, is_vip_bidder",
+        [isVip === true, id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      const user = result.rows[0];
+      console.log(`👑 [Admin] User ${user.name} (ID: ${user.id}) VIP status updated to: ${user.is_vip_bidder}`);
+
+      res.json({
+        success: true,
+        message: `VIP status updated successfully for ${user.name}`,
+        data: user
+      });
+    } catch (error) {
+      console.error("Error toggling VIP status:", error);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
@@ -491,7 +576,7 @@ export const AdminController = {
   async updateUser(req, res) {
     try {
       const { id } = req.params;
-      const { name, email, phone, status } = req.body;
+      const { name, email, phone, status, address, city, role, password } = req.body;
 
       const updates = [];
       const params = [];
@@ -503,7 +588,7 @@ export const AdminController = {
       }
       if (email) {
         updates.push(`email = $${paramCount++}`);
-        params.push(email);
+        params.push(email.trim().toLowerCase());
       }
       if (phone !== undefined) {
         updates.push(`phone = $${paramCount++}`);
@@ -512,6 +597,23 @@ export const AdminController = {
       if (status) {
         updates.push(`status = $${paramCount++}`);
         params.push(status);
+      }
+      if (role) {
+        updates.push(`role = $${paramCount++}`);
+        params.push(role.toLowerCase().trim());
+      }
+      if (password && password.trim().length > 0) {
+        const hashed = await bcrypt.hash(password.trim(), 10);
+        updates.push(`password = $${paramCount++}`);
+        params.push(hashed);
+      }
+      if (address !== undefined) {
+        updates.push(`address = $${paramCount++}`);
+        params.push(address);
+      }
+      if (city !== undefined) {
+        updates.push(`city = $${paramCount++}`);
+        params.push(city);
       }
 
       if (updates.length === 0) {
@@ -572,7 +674,7 @@ export const AdminController = {
         `UPDATE users 
          SET ${updates.join(', ')}
          WHERE id = $${idParamNum} AND role NOT IN ('admin', 'superadmin')
-         RETURNING id, name, email, phone, role, status, created_at`,
+         RETURNING id, name, email, phone, role, status, address, city, created_at`,
         params
       );
 

@@ -18,9 +18,9 @@ export const requirePermission = (module, permissionType) => {
         return next();
       }
 
-      // Check user status (allow both 'active' and 'approved')
-      if (user.status !== 'active' && user.status !== 'approved') {
-        return res.status(403).json({ success: false, message: "Account is inactive or suspended" });
+      // Check user status (allow active, approved, or pending verification)
+      if (user.status === 'blocked' || user.status === 'suspended' || user.is_banned === true) {
+        return res.status(403).json({ success: false, message: "Account is blocked or suspended" });
       }
 
       const columnMap = {

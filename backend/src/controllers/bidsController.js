@@ -108,6 +108,27 @@ export const BidsController = {
 
         const product = productResult.rows[0];
 
+        // Step 9.1: VIP AUCTION PERMISSION CHECK
+        if (product.is_vip === true) {
+          const userVipCheck = await pool.query(
+            "SELECT is_vip_bidder, role FROM users WHERE id = $1",
+            [buyerId]
+          );
+          const isVip = userVipCheck.rows[0]?.is_vip_bidder === true || 
+                        ['admin', 'superadmin', 'super-admin'].includes(userVipCheck.rows[0]?.role);
+          if (!isVip) {
+            console.log('🧩 [BidError] VIP auction bid rejected: User is not an authorized VIP bidder', { buyerId });
+            throw {
+              status: 403,
+              message: "Only authorized VIP bidders can place bids in this VIP Container auction. Regular bidders can watch the live auction."
+            };
+          }
+        }
+
+        // Capture the immediate previous highest bidder BEFORE updating
+        const previousHighestBidderId = product.highest_bidder_id;
+        const previousHighestBidAmount = parseFloat(product.current_bid) || parseFloat(product.starting_bid) || 0;
+
         // Step 10: Perform all validations inside the lock
 
         // Check if seller is trying to bid on their own product
@@ -205,31 +226,26 @@ export const BidsController = {
           console.log('⚠️ [BidPlace] Failed to notify seller:', notifError.message);
         }
 
-        // Notify previous bidders (Outbid)
+        // Notify ONLY the immediately previous highest bidder (Exact Client Requirement)
         try {
-          const previousBiddersResult = await pool.query(
-            `SELECT DISTINCT user_id 
-             FROM bids 
-             WHERE product_id = $1 AND user_id != $2`,
-            [productIdNum, buyerId]
-          );
-
-          if (previousBiddersResult.rows.length > 0) {
-            await Promise.all(
-              previousBiddersResult.rows.map(bidder =>
-                notifyUser(
-                  bidder.user_id,
-                  'Outbid!',
-                  `You've been outbid on "${product.title}". New bid: $${bidAmount}`,
-                  'outbid',
-                  productIdNum
-                )
-              )
+          if (
+            previousHighestBidderId && 
+            previousHighestBidderId !== buyerId && 
+            bidAmount > previousHighestBidAmount
+          ) {
+            await notifyUser(
+              previousHighestBidderId,
+              'You’ve Been Outbid!',
+              `Someone placed a higher bid of $${bidAmount} on ${product.title}. Place a new bid now!`,
+              'outbid',
+              productIdNum
             );
-            console.log(`✅ [BidPlace] Notifications sent to ${previousBiddersResult.rows.length} previous bidders`);
+            console.log(`✅ [BidPlace] Outbid notification sent ONLY to previous highest bidder: ${previousHighestBidderId}`);
+          } else {
+            console.log('ℹ️ [BidPlace] No previous outbid notification needed (first bid or same bidder outbidding self)');
           }
         } catch (biddersNotifError) {
-          console.log('⚠️ [BidPlace] Failed to notify previous bidders:', biddersNotifError.message);
+          console.log('⚠️ [BidPlace] Failed to notify previous highest bidder:', biddersNotifError.message);
         }
 
         // Prepare response data
@@ -337,21 +353,36 @@ export const BidsController = {
     try {
       const { productId } = req.params;
 
+      // 1. Fetch full bids history for product with bidder names and timestamps
       const result = await pool.query(
         `SELECT 
-          b.*,
-          u.name as bidder_name
+          b.id,
+          b.product_id,
+          b.user_id,
+          b.amount,
+          b.created_at,
+          COALESCE(u.name, 'Bidder ' || b.user_id) as bidder_name
         FROM bids b
         LEFT JOIN users u ON b.user_id = u.id
         WHERE b.product_id = $1
-        ORDER BY b.amount DESC, b.created_at DESC
-        LIMIT 1`,
+        ORDER BY b.amount DESC, b.created_at DESC`,
         [productId]
       );
 
+      // 2. Count total bids and unique bidders
+      const totalBids = result.rows.length;
+      const uniqueBidders = new Set(result.rows.map(r => r.user_id)).size;
+      const highestBid = result.rows[0] || null;
+
       res.json({
         success: true,
-        data: result.rows
+        data: result.rows,
+        summary: {
+          total_bids: totalBids,
+          unique_bidders: uniqueBidders,
+          highest_bid: highestBid,
+          highest_bidder_name: highestBid?.bidder_name || null
+        }
       });
     } catch (error) {
       console.error("Error fetching bids:", error);
@@ -406,8 +437,9 @@ export const BidsController = {
               p.image_url as product_image,
               p.status as product_status,
               p.auction_end_time,
-              p.current_bid as product_current_bid,
+              COALESCE(p.current_bid, b.amount) as product_current_bid,
               p.highest_bidder_id as product_highest_bidder_id,
+              CASE WHEN p.highest_bidder_id = b.user_id THEN true ELSE false END as is_highest_bidder,
               EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
               'live' as auction_status
             FROM bids b

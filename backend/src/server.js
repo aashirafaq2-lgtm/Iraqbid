@@ -26,6 +26,7 @@ import { initCouponTables } from "./controllers/couponController.js";
 import specialBidderRoutes from "./Routes/specialBidderRoutes.js";
 import { initSpecialBidderTables } from "./controllers/specialBidderController.js";
 import challengeRoutes from "./Routes/challengeRoutes.js";
+import vipRoutes from "./Routes/vipRoutes.js";
 import { ChallengeController } from "./controllers/challengeController.js";
 import { runAutoBidderCycle } from "./controllers/enterpriseOperationsController.js";
 import cors from "cors";
@@ -163,6 +164,7 @@ app.use("/api/coupons", couponRoutes); // ✅ Influencer Coupons Management API
 app.use("/api/special-bidders", specialBidderRoutes); // ✅ Special Bidders Management & Bidding API
 app.use("/api/challenge", challengeRoutes); // ✅ Daily Challenge & Leaderboard API
 app.use("/api/wheel", challengeRoutes); // ✅ Lucky Wheel API
+app.use("/api/vip", vipRoutes); // ✅ VIP Container Auctions & Live Arena API
 app.get("/join", ChallengeController.handleJoinLanding); // ✅ Referral Join Web Landing & Deep-link Redirect
 
 // Public settings route (for Accounts WhatsApp number)
