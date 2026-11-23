@@ -302,6 +302,23 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 New client connected: ${socket.id}`);
 
+  // Allow clients to join their user room for private outbid & status updates
+  socket.on("join_user", (userId) => {
+    if (userId) {
+      const room = `user_${userId}`;
+      socket.join(room);
+      console.log(`👤 Client ${socket.id} joined personal room: ${room}`);
+    }
+  });
+
+  socket.on("leave_user", (userId) => {
+    if (userId) {
+      const room = `user_${userId}`;
+      socket.leave(room);
+      console.log(`👤 Client ${socket.id} left personal room: ${room}`);
+    }
+  });
+
   // Allow clients to join specific product rooms for real-time bid updates
   socket.on("join_room", (productId) => {
     const room = `product_${productId}`;

@@ -350,14 +350,39 @@ export const placeSpecialBid = async (req, res) => {
       if (io) {
         const updateData = {
           productId: product.id,
+          product_id: product.id,
           currentPrice: amountNum,
+          current_bid: amountNum,
           totalBids: (parseInt(product.total_bids) || 0) + 1,
+          total_bids: (parseInt(product.total_bids) || 0) + 1,
+          highestBidderId: employeeId,
+          highest_bidder_id: employeeId,
           lastBidderName: bidderProfile.name, // Clearly displays the special bidder profile name
+          highest_bidder_name: bidderProfile.name,
+          previousHighestBidderId: product.highest_bidder_id || null,
           isSpecialBid: true,
+          bid: {
+            id: insertBid.rows[0].id,
+            product_id: product.id,
+            user_id: employeeId,
+            amount: amountNum,
+            created_at: insertBid.rows[0].created_at,
+            bidder_name: bidderProfile.name
+          },
           timestamp: new Date().toISOString()
         };
         io.to(`product_${product.id}`).emit('bid_updated', updateData);
         io.emit('bid_updated', updateData);
+
+        if (product.highest_bidder_id && product.highest_bidder_id !== employeeId) {
+          io.to(`user_${product.highest_bidder_id}`).emit('outbid', {
+            productId: product.id,
+            productTitle: product.title,
+            newHighestBid: amountNum,
+            outbidBidderId: product.highest_bidder_id,
+            timestamp: new Date().toISOString()
+          });
+        }
       }
     } catch (sockErr) {
       console.warn('Socket emit error for special bid:', sockErr.message);

@@ -264,14 +264,43 @@ export const BidsController = {
         if (io) {
           const updateData = {
             productId: productIdNum,
+            product_id: productIdNum,
             currentPrice: bidAmount,
+            current_bid: bidAmount,
             totalBids: (parseInt(product.total_bids) || 0) + 1,
+            total_bids: (parseInt(product.total_bids) || 0) + 1,
+            highestBidderId: buyerId,
+            highest_bidder_id: buyerId,
             lastBidderName: req.user.name || 'Anonymous',
+            highest_bidder_name: req.user.name || 'Anonymous',
+            previousHighestBidderId: previousHighestBidderId || null,
+            bid: {
+              id: newBid.id,
+              product_id: productIdNum,
+              user_id: buyerId,
+              amount: bidAmount,
+              created_at: newBid.created_at,
+              bidder_name: req.user.name || 'Anonymous'
+            },
             timestamp: new Date().toISOString()
           };
 
           console.log(`📡 [Socket] Emitting bid_updated for product_${productIdNum}:`, updateData);
           io.to(`product_${productIdNum}`).emit('bid_updated', updateData);
+          io.emit('bid_updated', updateData); // Also global for catalog/home cards
+
+          // Instantly send dedicated 'outbid' socket event to the outbid user if connected
+          if (previousHighestBidderId && previousHighestBidderId !== buyerId) {
+            const outbidData = {
+              productId: productIdNum,
+              productTitle: product.title,
+              newHighestBid: bidAmount,
+              outbidBidderId: previousHighestBidderId,
+              timestamp: new Date().toISOString()
+            };
+            console.log(`📡 [Socket] Emitting 'outbid' to user_${previousHighestBidderId}:`, outbidData);
+            io.to(`user_${previousHighestBidderId}`).emit('outbid', outbidData);
+          }
         }
 
         try {
