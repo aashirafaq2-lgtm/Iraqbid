@@ -24,13 +24,6 @@ export const NotificationsController = {
 
       const result = await pool.query(query, params);
 
-      // Also dispatch over-the-air FCM Push Notification to all registered devices
-      PushNotificationService.broadcastToAll({
-        title,
-        message,
-        data: { type: String(type) }
-      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
-
       res.json({
         success: true,
         data: result.rows,

@@ -331,7 +331,7 @@ export const MobileProductController = {
         LEFT JOIN users buyer ON p.highest_bidder_id = buyer.id
         WHERE (p.status = 'approved' OR p.status = 'active' OR p.status = 'coming_soon')
           AND (p.status = 'coming_soon' OR p.auction_end_time IS NOT NULL)
-          AND p.auction_end_time > NOW()
+          AND (p.status = 'coming_soon' OR p.auction_end_time > NOW())
           AND COALESCE(p.is_vip, false) = false
       `;
       const params = [];
@@ -370,7 +370,7 @@ export const MobileProductController = {
         LEFT JOIN users u ON p.seller_id = u.id
         WHERE (p.status = 'approved' OR p.status = 'active' OR p.status = 'coming_soon')
           AND (p.status = 'coming_soon' OR p.auction_end_time IS NOT NULL)
-          AND p.auction_end_time > NOW()
+          AND (p.status = 'coming_soon' OR p.auction_end_time > NOW())
           AND COALESCE(p.is_vip, false) = false
       `;
       const countParams = [];
