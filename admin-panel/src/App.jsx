@@ -1063,6 +1063,25 @@ export default function App() {
   };
 
   // --- UNPUBLISH / STOP LIVE AUCTION ---
+  const handleStartAuction = async (item) => {
+    const hours = prompt("Enter Auction Duration in Hours:", "24");
+    if (!hours) return;
+    try {
+      const res = await axios.post(`${API_ENTERPRISE}/auctions/start`, {
+        inventory_id: item.id,
+        duration_hours: parseInt(hours) || 24
+      });
+      if (res.data.success) {
+        alert(res.data.message || 'Auction started!');
+        fetchInventory();
+        fetchKPI();
+        fetchLiveAuctions();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message);
+    }
+  };
+
   const handleUnpublishAuction = async (item) => {
     if (!window.confirm(`Are you sure you want to stop/unpublish live auction for "${item.product_name}"? The item will be returned to warehouse stock and removed from live bidding.`)) {
       return;
@@ -2621,6 +2640,12 @@ export default function App() {
                                     onClick={() => handlePublishAuction(item)}
                                     style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
                                     Publish Auction
+                                  </button>
+                                ) : item.status === 'coming_soon' ? (
+                                  <button
+                                    onClick={() => handleStartAuction(item)}
+                                    style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
+                                    Start Auction
                                   </button>
                                 ) : item.status === 'in_auction' ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

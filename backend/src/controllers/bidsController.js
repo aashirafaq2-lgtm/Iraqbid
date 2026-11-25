@@ -137,6 +137,9 @@ export const BidsController = {
         }
 
         // Check product status
+        if (product.status === 'coming_soon') {
+          throw { status: 400, message: "This auction is Coming Soon and has not started yet." };
+        }
         if (product.status !== 'approved') {
           throw { status: 400, message: `Product is not available for bidding (status: ${product.status})` };
         }
@@ -390,7 +393,7 @@ export const BidsController = {
           b.user_id,
           b.amount,
           b.created_at,
-          COALESCE(u.name, 'Bidder ' || b.user_id) as bidder_name
+          COALESCE(NULLIF(b.special_bidder_name, ''), u.name, 'Bidder ' || b.user_id) as bidder_name
         FROM bids b
         LEFT JOIN users u ON b.user_id = u.id
         WHERE b.product_id = $1

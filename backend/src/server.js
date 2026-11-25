@@ -28,6 +28,8 @@ import { initSpecialBidderTables } from "./controllers/specialBidderController.j
 import challengeRoutes from "./Routes/challengeRoutes.js";
 import vipRoutes from "./Routes/vipRoutes.js";
 import { ChallengeController } from "./controllers/challengeController.js";
+import { DeepLinkController } from "./controllers/deepLinkController.js";
+import { initReferralSystemTables } from "./scripts/initReferralSystem.js";
 import { runAutoBidderCycle } from "./controllers/enterpriseOperationsController.js";
 import cors from "cors";
 import pool from "./config/db.js";
@@ -166,6 +168,10 @@ app.use("/api/challenge", challengeRoutes); // ✅ Daily Challenge & Leaderboard
 app.use("/api/wheel", challengeRoutes); // ✅ Lucky Wheel API
 app.use("/api/vip", vipRoutes); // ✅ VIP Container Auctions & Live Arena API
 app.get("/join", ChallengeController.handleJoinLanding); // ✅ Referral Join Web Landing & Deep-link Redirect
+app.get("/.well-known/apple-app-site-association", DeepLinkController.serveAppleAssociation);
+app.get("/.well-known/assetlinks.json", DeepLinkController.serveAndroidAssetLinks);
+app.get("/invite/:code", DeepLinkController.handleInviteLink);
+app.get("/invite", DeepLinkController.handleInviteLink);
 
 // Public settings route (for Accounts WhatsApp number)
 app.get("/api/system-settings/public", async (req, res) => {
@@ -194,7 +200,12 @@ app.put("/api/admin/system-settings/whatsapp", async (req, res) => {
 });
 
 // Health check routes
-app.get("/", (req, res) => res.send("BidMaster Admin API running ✅"));
+app.get("/", (req, res) => {
+  if (req.hostname && req.hostname.includes("link.iraqbid.net")) {
+    return DeepLinkController.handleInviteLink(req, res);
+  }
+  return res.send("IRAQ BID API running ✅");
+});
 
 // API health check endpoint for monitoring
 app.get("/api/health", async (req, res) => {
@@ -353,4 +364,5 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Server with Socket.io running on port ${PORT}`);
   initCouponTables();
   initSpecialBidderTables();
+  initReferralSystemTables();
 });

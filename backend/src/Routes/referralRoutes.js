@@ -4,14 +4,17 @@ import { verifyUser } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(verifyUser);
+// Public referral endpoints
+router.post("/click", ReferralController.recordClick);
 
-// User referral endpoints
-router.get("/my-code", ReferralController.getMyReferralCode);
-router.get("/history", ReferralController.getReferralHistory);
+// Protected referral endpoints
+router.post("/create", verifyUser, ReferralController.createOrGetReferralCode);
+router.get("/my-code", verifyUser, ReferralController.getMyReferralCode);
+router.post("/claim", verifyUser, ReferralController.claimReferral);
+router.get("/stats", verifyUser, ReferralController.getReferralStats);
+router.get("/history", verifyUser, ReferralController.getReferralHistory);
+
+// Public code validation (keep last so it doesn't shadow named routes)
+router.get("/:code", ReferralController.validateReferralCode);
 
 export default router;
-
-
-

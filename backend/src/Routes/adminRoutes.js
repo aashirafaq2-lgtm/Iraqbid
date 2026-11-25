@@ -9,6 +9,7 @@ import { AuctionController } from "../controllers/auctionController.js";
 import { NotificationsController } from "../controllers/notificationsController.js";
 import { SettingsController, upload } from "../controllers/settingsController.js";
 import { AdminReferralController } from "../controllers/adminReferralController.js";
+import { AdminSecurityController } from "../controllers/adminSecurityController.js";
 import { AdminWalletController } from "../controllers/adminWalletController.js";
 import { AdminSellerEarningsController } from "../controllers/adminSellerEarningsController.js";
 import { verifyAdmin } from "../middleware/authMiddleware.js";
@@ -154,6 +155,13 @@ router.put("/users/:id/adjust-reward", authorizeRoles("superadmin", "moderator")
 router.get("/referral/settings", authorizeRoles("superadmin", "moderator", "viewer", "company_products", "seller_products"), AdminReferralController.getReferralSettings);
 // PUT /referral/settings - superadmin only
 router.put("/referral/settings", authorizeRoles("superadmin"), AdminReferralController.updateReferralSettings);
+// POST /referral/reward - superadmin, moderator (approve/pay/reverse with audit log)
+router.post("/referral/reward", authorizeRoles("superadmin", "moderator"), AdminSecurityController.manageReferralReward);
+
+// --- ADMIN 2FA SECURITY ---
+router.post("/2fa/setup", authorizeRoles("superadmin", "moderator", "viewer", "company_products", "seller_products"), AdminSecurityController.setup2FA);
+router.post("/2fa/verify", authorizeRoles("superadmin", "moderator", "viewer", "company_products", "seller_products"), AdminSecurityController.verify2FA);
+router.post("/2fa/disable", authorizeRoles("superadmin", "moderator", "viewer", "company_products", "seller_products"), AdminSecurityController.disable2FA);
 
 // --- WALLET ---
 // GET /wallet/logs - superadmin, moderator, viewer (view all wallet transactions)

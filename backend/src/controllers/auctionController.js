@@ -150,7 +150,7 @@ export const AuctionController = {
           b.amount,
           b.created_at,
           u.id as user_id,
-          u.name as bidder_name,
+          COALESCE(NULLIF(b.special_bidder_name, ''), u.name) as bidder_name,
           u.email as bidder_email,
           u.phone as bidder_phone,
           p.title as product_title,
@@ -323,7 +323,7 @@ export const AuctionController = {
           b.amount,
           b.created_at,
           u.id as user_id,
-          u.name as bidder_name,
+          COALESCE(NULLIF(b.special_bidder_name, ''), u.name) as bidder_name,
           u.email as bidder_email,
           u.phone as bidder_phone
         FROM bids b

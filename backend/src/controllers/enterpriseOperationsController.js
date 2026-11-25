@@ -32,8 +32,7 @@ export const publishToAuction = async (req, res) => {
     // Calculate end time
     const endTime = new Date(Date.now() + duration_hours * 60 * 60 * 1000);
 
-    // Reuse/Create entry in products table so it appears immediately in the Iraq Bid mobile app
-    // Status must be 'approved' because mobile app queries WHERE status = 'approved' AND auction_end_time > NOW()
+    // Publish Without Starting: status = 'coming_soon', auction_end_time = NULL
     const productQuery = `
       INSERT INTO products (
         title, description, starting_price, current_price, starting_bid, current_bid, buy_now_price,
@@ -41,8 +40,8 @@ export const publishToAuction = async (req, res) => {
         source_type, condition, defect_alert, defect_details, original_retail_price, real_price, special_description, product_source
       ) VALUES (
         $1, $2, $3, $3, $3, $3, $4,
-        $5, $6, $7, 'approved', $8,
-        'company', $9, $10, $11, $12, $12, $13, 'company'
+        $5, $6, $7, 'coming_soon', NULL,
+        'company', $8, $9, $10, $11, $11, $12, 'company'
       ) RETURNING id;
     `;
 
@@ -55,7 +54,6 @@ export const publishToAuction = async (req, res) => {
       mainImage,
       JSON.stringify(item.images || []),
       item.category_id || targetCatId || 2,
-      endTime,
       item.condition,
       item.defect_alert,
       item.defect_details,
@@ -65,9 +63,9 @@ export const publishToAuction = async (req, res) => {
 
     const publishedProductId = productRes.rows[0].id;
 
-    // Update inventory item
+    // Update inventory item to coming_soon
     await client.query(
-      "UPDATE inventory_items SET status = 'in_auction', published_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+      "UPDATE inventory_items SET status = 'coming_soon', published_product_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
       [publishedProductId, inventory_id]
     );
 
@@ -93,9 +91,63 @@ export const publishToAuction = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Product published to live auction successfully!",
+      message: "Product published as Coming Soon! Click 'Start Auction' when ready to begin bidding.",
       published_product_id: publishedProductId,
-      end_time: endTime
+      status: 'coming_soon'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
+  }
+};
+
+export const startAuction = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { inventory_id, duration_hours = 24 } = req.body;
+
+    const invRes = await client.query("SELECT * FROM inventory_items WHERE id = $1 FOR UPDATE", [inventory_id]);
+    if (invRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: "Inventory item not found" });
+    }
+    const item = invRes.rows[0];
+    if (!item.published_product_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: "Item must be published first" });
+    }
+
+    const endTime = new Date(Date.now() + duration_hours * 60 * 60 * 1000);
+
+    await client.query(
+      "UPDATE products SET status = 'approved', auction_end_time = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+      [endTime, item.published_product_id]
+    );
+
+    await client.query(
+      "UPDATE inventory_items SET status = 'in_auction', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [inventory_id]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('auction_started', {
+        productId: item.published_product_id,
+        auction_end_time: endTime.toISOString(),
+        status: 'approved'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Auction started! Countdown and bidding are now live.",
+      published_product_id: item.published_product_id,
+      auction_end_time: endTime
     });
   } catch (error) {
     await client.query('ROLLBACK');

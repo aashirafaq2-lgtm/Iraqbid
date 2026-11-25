@@ -16,6 +16,7 @@ import {
 import {
   publishToAuction,
   unpublishAuction,
+  startAuction,
   getOrderDetailsWithLabel,
   updateShippingStatus,
   recordCustomerRefusal,
@@ -81,6 +82,7 @@ router.get("/barcodes/scan/:barcode", lookupBarcode);
 
 // --- 4. AUCTION PUBLISH & UNPUBLISH ---
 router.post("/auctions/publish", requirePermission('auctions', 'create'), publishToAuction);
+router.post("/auctions/start", requirePermission('auctions', 'create'), startAuction);
 router.post("/auctions/unpublish", requirePermission('auctions', 'edit'), unpublishAuction);
 
 // --- 5. ORDERS, SHIPPING & ORDER LABELS ---

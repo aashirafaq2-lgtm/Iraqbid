@@ -316,7 +316,7 @@ export const MobileProductController = {
           COALESCE(u.name, 'BidMaster') as seller_name,
           u.is_verified as seller_is_verified,
           c.name as category_name,
-          buyer.name as highest_bidder_name,
+          COALESCE((SELECT NULLIF(b2.special_bidder_name, '') FROM bids b2 WHERE b2.product_id = p.id ORDER BY b2.amount DESC, b2.created_at DESC LIMIT 1), buyer.name) as highest_bidder_name,
           EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
           p.product_source,
           COALESCE(p.original_retail_price, p.real_price, 0) as real_price,
@@ -329,8 +329,8 @@ export const MobileProductController = {
         LEFT JOIN users u ON p.seller_id = u.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users buyer ON p.highest_bidder_id = buyer.id
-        WHERE (p.status = 'approved' OR p.status = 'active')
-          AND p.auction_end_time IS NOT NULL
+        WHERE (p.status = 'approved' OR p.status = 'active' OR p.status = 'coming_soon')
+          AND (p.status = 'coming_soon' OR p.auction_end_time IS NOT NULL)
           AND p.auction_end_time > NOW()
           AND COALESCE(p.is_vip, false) = false
       `;
@@ -368,8 +368,8 @@ export const MobileProductController = {
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN users u ON p.seller_id = u.id
-        WHERE (p.status = 'approved' OR p.status = 'active')
-          AND p.auction_end_time IS NOT NULL
+        WHERE (p.status = 'approved' OR p.status = 'active' OR p.status = 'coming_soon')
+          AND (p.status = 'coming_soon' OR p.auction_end_time IS NOT NULL)
           AND p.auction_end_time > NOW()
           AND COALESCE(p.is_vip, false) = false
       `;
@@ -502,7 +502,7 @@ export const MobileProductController = {
           u.name as seller_name,
           u.is_verified as seller_is_verified,
           c.name as category_name,
-          buyer.name as highest_bidder_name,
+          COALESCE((SELECT NULLIF(b2.special_bidder_name, '') FROM bids b2 WHERE b2.product_id = p.id ORDER BY b2.amount DESC, b2.created_at DESC LIMIT 1), buyer.name) as highest_bidder_name,
           EXTRACT(EPOCH FROM (p.auction_end_time - NOW())) / 3600 as hours_left,
           CASE 
             WHEN p.auction_end_time > NOW() THEN 'live'
