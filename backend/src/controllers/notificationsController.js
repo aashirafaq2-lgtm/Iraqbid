@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { PushNotificationService } from "../services/pushNotificationService.js";
 
 export const NotificationsController = {
   // GET /api/notifications
@@ -22,6 +23,13 @@ export const NotificationsController = {
       params.push(parseInt(limit));
 
       const result = await pool.query(query, params);
+
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
 
       res.json({
         success: true,
@@ -50,6 +58,13 @@ export const NotificationsController = {
         "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false",
         [userId]
       );
+
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
 
       res.json({
         success: true,
@@ -89,6 +104,13 @@ export const NotificationsController = {
         throw colError;
       }
 
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
+
       res.json({
         success: true,
         message: "OneSignal ID synchronized successfully"
@@ -123,6 +145,13 @@ export const NotificationsController = {
         "UPDATE notifications SET is_read = true WHERE id = $1 RETURNING *",
         [id]
       );
+
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
 
       res.json({
         success: true,
@@ -191,6 +220,13 @@ export const NotificationsController = {
 
       const countResult = await pool.query(countQuery, countParams);
 
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
+
       res.json({
         success: true,
         data: result.rows,
@@ -227,6 +263,13 @@ export const NotificationsController = {
         RETURNING id;
       `, [title, message, type]);
 
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
+
       res.json({
         success: true,
         message: `Broadcast notification sent to ${insertResult.rowCount} users successfully`,
@@ -261,6 +304,13 @@ export const NotificationsController = {
         security_alerts: true
       };
 
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
+
       res.json({
         success: true,
         data: result.rows[0].notification_preferences || defaultSettings
@@ -290,6 +340,13 @@ export const NotificationsController = {
         "UPDATE users SET notification_preferences = $1 WHERE id = $2 RETURNING notification_preferences",
         [newSettings, userId]
       );
+
+      // Also dispatch over-the-air FCM Push Notification to all registered devices
+      PushNotificationService.broadcastToAll({
+        title,
+        message,
+        data: { type: String(type) }
+      }).catch(err => console.error('⚠️ [FCM Broadcast] Error:', err.message));
 
       res.json({
         success: true,

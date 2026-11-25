@@ -85,6 +85,25 @@ router.post("/auctions/publish", requirePermission('auctions', 'create'), publis
 router.post("/auctions/start", requirePermission('auctions', 'create'), startAuction);
 router.post("/auctions/unpublish", requirePermission('auctions', 'edit'), unpublishAuction);
 
+// Coming Soon Interests (Admin view)
+router.get("/auctions/coming-soon-interests", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.id as product_id, p.title, COUNT(csi.id) as interest_count,
+             COALESCE(json_agg(json_build_object('user_id', u.id, 'name', u.name, 'phone', u.phone, 'created_at', csi.created_at)) FILTER (WHERE u.id IS NOT NULL), '[]') as interested_users
+      FROM products p
+      LEFT JOIN coming_soon_interests csi ON csi.product_id = p.id
+      LEFT JOIN users u ON csi.user_id = u.id
+      WHERE p.status = 'coming_soon'
+      GROUP BY p.id, p.title
+      ORDER BY p.id DESC
+    `);
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // --- 5. ORDERS, SHIPPING & ORDER LABELS ---
 router.get("/orders/:id/label", requirePermission('orders', 'view'), getOrderDetailsWithLabel);
 router.put("/orders/:id/shipping", requirePermission('orders', 'edit'), updateShippingStatus);

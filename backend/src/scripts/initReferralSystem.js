@@ -85,6 +85,17 @@ export async function initReferralSystemTables() {
       ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     `).catch(() => {});
 
+    // Coming Soon "Notify Me" interests table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS coming_soon_interests (
+        id BIGSERIAL PRIMARY KEY,
+        product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(product_id, user_id)
+      );
+    `);
+
     console.log("✅ [ReferralSystem] Database tables & constraints verified.");
   } catch (err) {
     console.error("❌ [ReferralSystem] Error initializing tables:", err.message);

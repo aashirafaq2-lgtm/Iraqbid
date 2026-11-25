@@ -2518,6 +2518,7 @@ export default function App() {
                 style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '11px 16px', color: '#fff', fontSize: '13px' }}>
                 <option value="all">All Inventory</option>
                 <option value="available">Available Products</option>
+                <option value="coming_soon">Waiting Products</option>
                 <option value="in_auction">Auction Inventory</option>
                 <option value="sold">Sold Products</option>
                 <option value="delivered">Delivered Products</option>

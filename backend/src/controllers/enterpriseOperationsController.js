@@ -143,6 +143,26 @@ export const startAuction = async (req, res) => {
       });
     }
 
+    // Notify all users who clicked "Notify Me" on this Coming Soon product
+    try {
+      const { notifyUser } = await import("../utils/notificationUtils.js");
+      const interested = await pool.query(
+        "SELECT user_id FROM coming_soon_interests WHERE product_id = $1",
+        [item.published_product_id]
+      );
+      for (const row of interested.rows) {
+        notifyUser(
+          row.user_id,
+          `🔥 Auction Started: ${item.product_name}`,
+          `"${item.product_name}" is now LIVE for bidding! Tap to place your bid now.`,
+          'auction_started',
+          item.published_product_id
+        ).catch(() => {});
+      }
+    } catch (notifyErr) {
+      console.warn('⚠️ [StartAuction] Notify Me broadcast warning:', notifyErr.message);
+    }
+
     res.json({
       success: true,
       message: "Auction started! Countdown and bidding are now live.",
