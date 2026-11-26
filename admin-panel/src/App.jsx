@@ -289,7 +289,7 @@ export default function App() {
     }
     setPushSending(true);
     try {
-      const res = await axios.post(`${API_NOTIFICATIONS}/broadcast`, broadcastForm);
+      const res = await axios.post(`${API_NOTIFICATIONS}/broadcast`, pushBroadcastForm);
       if (res.data.success) {
         alert(`✅ Push Notification dispatched successfully to all users!`);
         setPushBroadcastForm({
@@ -7646,10 +7646,10 @@ export default function App() {
               e.preventDefault();
               setBroadcastLoading(true);
               try {
-                const res = await axios.post(`${API_BASE}/notifications/broadcast`, broadcastForm);
+                const res = await axios.post(`${API_BASE}/notifications/broadcast`, customerBroadcastForm);
                 alert(res.data?.message || 'Broadcast notification sent successfully!');
                 setShowBroadcastModal(false);
-                setBroadcastForm({ title: '', message: '', type: 'system' });
+                setCustomerBroadcastForm({ title: '', message: '', type: 'system' });
               } catch (err) {
                 alert(err.response?.data?.message || err.message || 'Failed to send broadcast');
               } finally {
@@ -7659,8 +7659,8 @@ export default function App() {
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Notification Category</label>
                 <select
-                  value={pushBroadcastForm.type}
-                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, type: e.target.value })}
+                  value={customerBroadcastForm.type}
+                  onChange={e => setCustomerBroadcastForm({ ...customerBroadcastForm, type: e.target.value })}
                   style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                 >
                   <option value="system">📢 System Announcement</option>
@@ -7676,8 +7676,8 @@ export default function App() {
                   type="text"
                   required
                   placeholder="e.g. خصم خاص 20% لجميع المزايدين اليوم! / Special Offer!"
-                  value={pushBroadcastForm.title}
-                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, title: e.target.value })}
+                  value={customerBroadcastForm.title}
+                  onChange={e => setCustomerBroadcastForm({ ...customerBroadcastForm, title: e.target.value })}
                   style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                 />
               </div>
@@ -7688,8 +7688,8 @@ export default function App() {
                   rows={4}
                   required
                   placeholder="Type the message that will appear inside customer in-app notifications center..."
-                  value={pushBroadcastForm.message}
-                  onChange={e => setBroadcastForm({ ...pushBroadcastForm, message: e.target.value })}
+                  value={customerBroadcastForm.message}
+                  onChange={e => setCustomerBroadcastForm({ ...customerBroadcastForm, message: e.target.value })}
                   style={{ width: '100%', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical' }}
                 />
               </div>
